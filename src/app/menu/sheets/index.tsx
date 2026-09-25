@@ -40,6 +40,25 @@ const firebaseIds: Record<string, string> = {
 
 /*
  * =========================================================
+ * ÍCONES DE INSPEÇÃO
+ * =========================================================
+ *
+ * Os tipos usados aqui são os mesmos definidos em
+ * characterDefaults.inspecao.
+ */
+
+const inspectionIcons: Record<string, any> = {
+  roupa: require("@/assets/icons/inspecao_roupa.png"),
+  olho: require("@/assets/icons/inspecao_olho.png"),
+  pele: require("@/assets/icons/inspecao_pele.png"),
+  postura: require("@/assets/icons/inspecao_postura.png"),
+  raca: require("@/assets/icons/inspecao_raca.png"),
+  fisico: require("@/assets/icons/inspecao_fisico.png"),
+  voz: require("@/assets/icons/inspecao_voz.png"),
+};
+
+/*
+ * =========================================================
  * FOTOS
  * =========================================================
  */
@@ -791,21 +810,20 @@ export default function CompleteSheet() {
             selectedSkillCard.imagem === "necrobioticCuirass" &&
             effect.campo === "escudo";
 
-          const effectMaximo =
-            effect.maximo ?? effect.valorMaximo;
+          const effectMaximo = effect.maximo ?? effect.valorMaximo;
 
           if (existingState === undefined) {
             updatedStates[effect.campo] = {
               atual: Math.max(
                 0,
                 Math.min(
-                  isHardenedSkin ? Number(effect.valor ?? 0) : Number(effect.valor ?? 0),
+                  isHardenedSkin
+                    ? Number(effect.valor ?? 0)
+                    : Number(effect.valor ?? 0),
                   Number(effectMaximo ?? effect.valor ?? 0),
                 ),
               ),
-              ...(effectMaximo !== undefined
-                ? { maximo: effectMaximo }
-                : {}),
+              ...(effectMaximo !== undefined ? { maximo: effectMaximo } : {}),
             };
             statesChanged = true;
             continue;
@@ -1094,7 +1112,6 @@ export default function CompleteSheet() {
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        
       >
         {/* =================================================
             CABEÇALHO
@@ -1212,7 +1229,8 @@ export default function CompleteSheet() {
                     selectionColor="#ffffff"
                   />
 
-                  {(estados.armadura ?? estados.escudo)?.maximo !== undefined && (
+                  {(estados.armadura ?? estados.escudo)?.maximo !==
+                    undefined && (
                     <>
                       <Text style={styles.slash}>/</Text>
                       <Text style={styles.fixedValue}>
@@ -1484,35 +1502,48 @@ export default function CompleteSheet() {
           {inspecao.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma informação registrada.</Text>
           ) : (
-            inspecao.map((item, index) => (
-              <View key={index} style={styles.inspectionItem}>
-                <View style={styles.inspectionIcon}>
-                  <Text style={styles.inspectionIconText}>
-                    {item?.icone ?? "•"}
-                  </Text>
+            inspecao.map((item, index) => {
+              const icon = inspectionIcons[item?.tipo];
+
+              return (
+                <View
+                  key={`${item?.tipo ?? "inspecao"}-${index}`}
+                  style={styles.inspectionItem}
+                >
+                  <View style={styles.inspectionIcon}>
+                    {icon ? (
+                      <Image
+                        source={icon}
+                        resizeMode="contain"
+                        style={styles.inspectionIconImage}
+                      />
+                    ) : (
+                      <Text style={styles.inspectionIconFallback}>•</Text>
+                    )}
+                  </View>
+
+                  <TextInput
+                    value={item?.descricao ?? ""}
+                    onChangeText={(text) => {
+                      const updated = [...inspecao];
+
+                      updated[index] = {
+                        ...updated[index],
+                        descricao: text,
+                      };
+
+                      setInspecao(updated);
+                    }}
+                    onBlur={() => saveField("inspecao", inspecao)}
+                    multiline
+                    style={styles.inspectionText}
+                    placeholder="Clique para editar..."
+                    placeholderTextColor="#555"
+                    selectionColor="#ffffff"
+                  />
                 </View>
-
-                <TextInput
-                  value={item?.texto ?? ""}
-                  onChangeText={(text) => {
-                    const updated = [...inspecao];
-
-                    updated[index] = {
-                      ...updated[index],
-                      texto: text,
-                    };
-
-                    setInspecao(updated);
-                  }}
-                  onBlur={() => saveField("inspecao", inspecao)}
-                  multiline
-                  style={styles.inspectionText}
-                  placeholder="Informação"
-                  placeholderTextColor="#555"
-                  selectionColor="#ffffff"
-                />
-              </View>
-            ))
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -1764,7 +1795,7 @@ const styles = StyleSheet.create({
   },
 
   contentContainer: {
-    paddingBottom: 110,    
+    paddingBottom: 110,
   },
 
   loading: {
@@ -2300,31 +2331,48 @@ const styles = StyleSheet.create({
 
   inspectionItem: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 14,
+    alignItems: "center",
+    width: "100%",
+    marginTop: 18,
+    paddingHorizontal: 4,
   },
 
   inspectionIcon: {
-    width: 32,
-    height: 32,
-    borderWidth: 1,
-    borderColor: "#444",
+    width: 52,
+    height: 52,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginRight: 14,
   },
 
-  inspectionIconText: {
+  inspectionIconImage: {
+    width: 38,
+    height: 38,
+  },
+
+  inspectionIconFallback: {
     color: "#777",
-    fontSize: 11,
+    fontSize: 14,
   },
 
   inspectionText: {
     flex: 1,
-    color: "#bbb",
-    fontSize: 13,
-    lineHeight: 19,
-    minHeight: 32,
-    padding: 0,
+    color: "#d0d0d0",
+    fontSize: 14,
+    lineHeight: 21,
+    minHeight: 48,
+
+    backgroundColor: "transparent",
+
+    borderWidth: 0,
+    borderBottomWidth: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+
+    textAlignVertical: "center",
   },
 });

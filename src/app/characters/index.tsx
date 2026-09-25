@@ -6,11 +6,13 @@ import {
   View,
   Dimensions,
   Pressable,
+  Platform,
 } from "react-native";
 import { Card } from "react-native-paper";
 import { FlatList } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Asset } from "expo-asset";
 
 import Animated, {
   useAnimatedStyle,
@@ -60,6 +62,67 @@ const characters = [
     front: require("@/assets/characters/dragonborn.png"),
   },
 ];
+
+function CharacterImage({
+  source,
+}: {
+  source: any;
+}) {
+  const [uri, setUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAsset() {
+      try {
+        const asset = Asset.fromModule(source);
+
+        await asset.downloadAsync();
+
+        if (mounted) {
+          setUri(asset.uri);
+        }
+      } catch (error) {
+        console.error(
+          "❌ ERRO AO CARREGAR IMAGEM DO PERSONAGEM:",
+          error,
+        );
+      }
+    }
+
+    loadAsset();
+
+    return () => {
+      mounted = false;
+    };
+  }, [source]);
+
+  if (Platform.OS === "web") {
+    if (!uri) {
+      return <View style={styles.cardImage} />;
+    }
+
+    return (
+      <img
+        src={uri}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          display: "block",
+        }}
+      />
+    );
+  }
+
+  return (
+    <Image
+      source={source}
+      style={styles.cardImage}
+      resizeMode="contain"
+    />
+  );
+}
 
 function CharacterCard({
   back,
@@ -145,10 +208,8 @@ function CharacterCard({
     <Pressable onPress={flip}>
       <Card style={styles.card}>
         <Animated.View style={[styles.face, animatedStyle]}>
-          <Image
+          <CharacterImage
             source={showFront && front ? front : back}
-            style={styles.cardImage}
-            resizeMode="contain"
           />
         </Animated.View>
       </Card>
@@ -246,7 +307,9 @@ export default function CharacterSelection() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>SELEÇÃO</Text>
+      <Text style={styles.title}>
+        SELEÇÃO
+      </Text>
 
       <Text style={styles.subtitle}>
         Escolha seu personagem
