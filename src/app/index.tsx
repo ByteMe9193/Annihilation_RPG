@@ -12,9 +12,17 @@ import { router, useFocusEffect } from "expo-router";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import {
+  doc,
+  getDoc,
+  onSnapshot,
+} from "firebase/firestore";
 
 import { Snackbar } from "react-native-paper";
+
+import { db } from "@/services/firebase/config";
 
 const GM_PASSWORD = "3859";
 
@@ -23,56 +31,195 @@ export default function HomeScreen() {
     null,
   );
 
+  const [sessionLocked, setSessionLocked] = useState(false);
+
   const [snackbarVisible, setSnackbarVisible] = useState(false);
 
   const [masterModalVisible, setMasterModalVisible] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
   const [masterPasswordError, setMasterPasswordError] = useState(false);
 
+  /*
+   * ============================================================
+   * CARREGA PERSONAGEM SELECIONADO
+   * ============================================================
+   */
+
   useFocusEffect(
     useCallback(() => {
       async function loadSelectedCharacter() {
-        const character = await AsyncStorage.getItem("selectedCharacter");
+        try {
+          const character =
+            await AsyncStorage.getItem("selectedCharacter");
 
-        setSelectedCharacter(character);
+          setSelectedCharacter(character);
+        } catch (error) {
+          console.error(
+            "❌ ERRO AO CARREGAR PERSONAGEM:",
+            error,
+          );
+        }
       }
 
       loadSelectedCharacter();
     }, []),
   );
 
-  const continueStory = async () => {
-    const character = await AsyncStorage.getItem("selectedCharacter");
+  /*
+   * ============================================================
+   * SINCRONIZAÇÃO DO BLOQUEIO DA SESSÃO
+   * ============================================================
+   */
 
-    if (!character) {
-      router.replace("/characters");
-      return;
-    }
+  useEffect(() => {
+    const sessionRef = doc(db, "game", "session");
 
-    router.replace({
-      pathname: "/characters/reveal",
-      params: {
-        character,
+    const unsubscribe = onSnapshot(
+      sessionRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setSessionLocked(false);
+          return;
+        }
+
+        const data = snapshot.data();
+
+        setSessionLocked(data.bloqueada === true);
       },
-    });
-  };
+      (error) => {
+        console.error(
+          "❌ ERRO AO SINCRONIZAR ESTADO DA SESSÃO:",
+          error,
+        );
+      },
+    );
 
-  const openCharacterMode = async () => {
-    const character = await AsyncStorage.getItem("selectedCharacter");
+    return () => unsubscribe();
+  }, []);
 
-    if (character) {
+  /*
+   * ============================================================
+   * CONTINUAR HISTÓRIA
+   * ============================================================
+   */
+
+  const continueStory = async () => {
+    try {
+      /*
+       * Faz uma verificação diretamente no Firebase
+       * antes de permitir a entrada.
+       */
+      const sessionRef = doc(db, "game", "session");
+
+      const sessionSnapshot =
+        await getDoc(sessionRef);
+
+      const bloqueada =
+        sessionSnapshot.exists() &&
+        sessionSnapshot.data().bloqueada === true;
+
+      if (bloqueada) {
+        setSessionLocked(true);
+        return;
+      }
+
+      const character =
+        await AsyncStorage.getItem(
+          "selectedCharacter",
+        );
+
+      if (!character) {
+        router.replace("/characters");
+        return;
+      }
+
+      /*
+       * Garante que este dispositivo está
+       * sendo utilizado como jogador.
+       */
+      await AsyncStorage.setItem(
+        "userMode",
+        "player",
+      );
+
       router.replace({
         pathname: "/characters/reveal",
         params: {
           character,
         },
       });
-
-      return;
+    } catch (error) {
+      console.error(
+        "❌ ERRO AO CONTINUAR HISTÓRIA:",
+        error,
+      );
     }
-
-    router.replace("/characters");
   };
+
+  /*
+   * ============================================================
+   * JOGAR COMO PERSONAGEM
+   * ============================================================
+   */
+
+  const openCharacterMode = async () => {
+    try {
+      /*
+       * Verificação de segurança diretamente no Firebase.
+       */
+      const sessionRef = doc(db, "game", "session");
+
+      const sessionSnapshot =
+        await getDoc(sessionRef);
+
+      const bloqueada =
+        sessionSnapshot.exists() &&
+        sessionSnapshot.data().bloqueada === true;
+
+      if (bloqueada) {
+        setSessionLocked(true);
+        return;
+      }
+
+      /*
+       * Este dispositivo passa a ser considerado
+       * um jogador.
+       */
+      await AsyncStorage.setItem(
+        "userMode",
+        "player",
+      );
+
+      const character =
+        await AsyncStorage.getItem(
+          "selectedCharacter",
+        );
+
+      if (character) {
+        router.replace({
+          pathname: "/characters/reveal",
+          params: {
+            character,
+          },
+        });
+
+        return;
+      }
+
+      router.replace("/characters");
+    } catch (error) {
+      console.error(
+        "❌ ERRO AO ABRIR MODO PERSONAGEM:",
+        error,
+      );
+    }
+  };
+
+  /*
+   * ============================================================
+   * MENU DO MESTRE
+   * ============================================================
+   */
 
   const openMasterMenu = () => {
     setMasterPassword("");
@@ -80,8 +227,17 @@ export default function HomeScreen() {
     setMasterModalVisible(true);
   };
 
-  const enterMasterMenu = () => {
+  const enterMasterMenu = async () => {
     if (masterPassword === GM_PASSWORD) {
+      /*
+       * Marca este dispositivo como Mestre.
+       * O bloqueio global da sessão não afeta o Mestre.
+       */
+      await AsyncStorage.setItem(
+        "userMode",
+        "gm",
+      );
+
       setMasterModalVisible(false);
       setMasterPassword("");
       setMasterPasswordError(false);
@@ -94,29 +250,69 @@ export default function HomeScreen() {
     setMasterPasswordError(true);
   };
 
+  /*
+   * ============================================================
+   * RENDER
+   * ============================================================
+   */
+
   return (
     <View style={styles.container}>
-      <Image source={require("@/assets/title.png")} style={styles.logo} />
+      <Image
+        source={require("@/assets/title.png")}
+        style={styles.logo}
+      />
 
-      <Pressable onPress={openCharacterMode} style={styles.button}>
-        <Text style={styles.buttonText}>
-          {selectedCharacter ? "CONTINUAR HISTÓRIA" : "JOGAR COMO PERSONAGEM"}
+      <Pressable
+        onPress={openCharacterMode}
+        disabled={sessionLocked}
+        style={[
+          styles.button,
+          sessionLocked && styles.buttonLocked,
+        ]}
+      >
+        <Text
+          style={[
+            styles.buttonText,
+            sessionLocked && styles.buttonTextLocked,
+          ]}
+        >
+          {sessionLocked
+            ? "SESSÃO BLOQUEADA"
+            : selectedCharacter
+              ? "CONTINUAR HISTÓRIA"
+              : "JOGAR COMO PERSONAGEM"}
         </Text>
       </Pressable>
 
-      <Pressable onPress={openMasterMenu} style={styles.masterButton}>
-        <Text style={styles.masterButtonText}>JOGAR COMO MESTRE</Text>
+      {sessionLocked && (
+        <Text style={styles.lockedDescription}>
+          A SESSÃO FOI BLOQUEADA PELO MESTRE.
+        </Text>
+      )}
+
+      <Pressable
+        onPress={openMasterMenu}
+        style={styles.masterButton}
+      >
+        <Text style={styles.masterButtonText}>
+          JOGAR COMO MESTRE
+        </Text>
       </Pressable>
 
       <Modal
         visible={masterModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setMasterModalVisible(false)}
+        onRequestClose={() =>
+          setMasterModalVisible(false)
+        }
       >
         <View style={styles.modalOverlay}>
           <View style={styles.masterModal}>
-            <Text style={styles.modalTitle}>ACESSO DO MESTRE</Text>
+            <Text style={styles.modalTitle}>
+              ACESSO DO MESTRE
+            </Text>
 
             <Text style={styles.modalDescription}>
               DIGITE A SENHA PARA ACESSAR O MENU DO MESTRE.
@@ -138,7 +334,9 @@ export default function HomeScreen() {
             />
 
             {masterPasswordError && (
-              <Text style={styles.errorText}>SENHA INCORRETA.</Text>
+              <Text style={styles.errorText}>
+                SENHA INCORRETA.
+              </Text>
             )}
 
             <View style={styles.modalActions}>
@@ -150,11 +348,18 @@ export default function HomeScreen() {
                 }}
                 style={styles.cancelButton}
               >
-                <Text style={styles.cancelButtonText}>CANCELAR</Text>
+                <Text style={styles.cancelButtonText}>
+                  CANCELAR
+                </Text>
               </Pressable>
 
-              <Pressable onPress={enterMasterMenu} style={styles.enterButton}>
-                <Text style={styles.enterButtonText}>ENTRAR</Text>
+              <Pressable
+                onPress={enterMasterMenu}
+                style={styles.enterButton}
+              >
+                <Text style={styles.enterButtonText}>
+                  ENTRAR
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -163,7 +368,9 @@ export default function HomeScreen() {
 
       <Snackbar
         visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
+        onDismiss={() =>
+          setSnackbarVisible(false)
+        }
         duration={2500}
       >
         Sistema reiniciado
@@ -194,10 +401,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
   },
 
+  buttonLocked: {
+    borderColor: "#444444",
+    opacity: 0.55,
+  },
+
   buttonText: {
     color: "#ffffff",
     fontSize: 14,
     letterSpacing: 2,
+  },
+
+  buttonTextLocked: {
+    color: "#555555",
+  },
+
+  lockedDescription: {
+    color: "#555555",
+    fontSize: 9,
+    letterSpacing: 1.5,
+    textAlign: "center",
+    marginTop: 12,
   },
 
   masterButton: {

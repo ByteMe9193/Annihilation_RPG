@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -24,12 +25,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 
 import {
+  addDoc,
   collection,
-  doc,
-  onSnapshot,
-  setDoc,
   deleteDoc,
+  doc,
+  getDoc,
   getDocs,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
 } from "firebase/firestore";
 
 import { db } from "@/services/firebase/config";
@@ -62,6 +67,7 @@ type InventoryItem = {
   nome: string;
   categoria: InventoryCategory;
   categoriaAutomatica: InventoryCategory;
+  quantidade: number;
 };
 
 /* =========================================================
@@ -568,6 +574,7 @@ export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
 
   const [newItem, setNewItem] = useState("");
+  const [newItemQuantity, setNewItemQuantity] = useState("1");
 
   const [categoryModalVisible, setCategoryModalVisible] =
     useState(false);
@@ -580,6 +587,7 @@ export default function InventoryScreen() {
 
   const [itemToDelete, setItemToDelete] =
     useState<InventoryItem | null>(null);
+  const [deleteQuantity, setDeleteQuantity] = useState("1");
 
   const [transferModalVisible, setTransferModalVisible] =
     useState(false);
@@ -593,8 +601,24 @@ export default function InventoryScreen() {
 
   const [destinationCharacter, setDestinationCharacter] =
     useState<{ id: string; nome: string } | null>(null);
+  const [transferQuantity, setTransferQuantity] = useState("1");
 
   const [saving, setSaving] = useState(false);
+
+  type ReceivedNotification = {
+    id: string;
+    itemNome: string;
+    quantidade: number;
+    remetenteNome: string;
+  };
+
+  const [notificationQueue, setNotificationQueue] = useState<
+    ReceivedNotification[]
+  >([]);
+  const [activeNotification, setActiveNotification] =
+    useState<ReceivedNotification | null>(null);
+
+  const seenNotificationIds = useRef<Set<string>>(new Set());
 
   /* =======================================================
      CARREGAR PERSONAGEM
@@ -672,6 +696,7 @@ export default function InventoryScreen() {
               categoriaAutomatica:
                 data.categoriaAutomatica ??
                 "diversos",
+              quantidade: Math.max(0, Number(data.quantidade) || 1),
             };
           });
 
@@ -687,6 +712,151 @@ export default function InventoryScreen() {
 
     return unsubscribe;
   }, [character]);
+
+  /* =======================================================
+     NOTIFICAÇÕES DE ITENS RECEBIDOS
+  ======================================================= */
+
+  useEffect(() => {
+    if (!character) {
+      setNotificationQueue([]);
+      setActiveNotification(null);
+      seenNotificationIds.current.clear();
+      return;
+    }
+
+    const characterIdMap: Record<string, string> = {
+      Ciborgue: "cyborg",
+      Tengu: "tengu",
+      Elfo: "elf",
+      Tiefling: "tiefling",
+      Draconata: "dragonborn",
+    };
+
+    const characterId = characterIdMap[character];
+
+    if (!characterId) {
+      return;
+    }
+
+    const notificationsRef = collection(
+      db,
+      "characters",
+      characterId,
+      "notifications"
+    );
+
+    const unsubscribe = onSnapshot(
+      notificationsRef,
+      (snapshot) => {
+        const unreadNotifications: ReceivedNotification[] =
+          snapshot.docs
+            .filter((notificationDoc) => {
+              const data = notificationDoc.data();
+
+              return (
+                data.tipo === "item_recebido" &&
+                data.lida !== true &&
+                !seenNotificationIds.current.has(notificationDoc.id)
+              );
+            })
+            .map((notificationDoc) => {
+              const data = notificationDoc.data();
+
+              return {
+                id: notificationDoc.id,
+                itemNome: String(data.itemNome ?? "Item"),
+                quantidade: Math.max(
+                  1,
+                  Number(data.quantidade) || 1
+                ),
+                remetenteNome: String(
+                  data.remetenteNome ?? "Alguém"
+                ),
+              };
+            });
+
+        if (unreadNotifications.length === 0) {
+          return;
+        }
+
+        unreadNotifications.forEach((notification) => {
+          seenNotificationIds.current.add(notification.id);
+        });
+
+        setNotificationQueue((current) => [
+          ...current,
+          ...unreadNotifications,
+        ]);
+      },
+      (error) => {
+        console.error(
+          "ERRO AO SINCRONIZAR NOTIFICAÇÕES:",
+          error
+        );
+      }
+    );
+
+    return unsubscribe;
+  }, [character]);
+
+  useEffect(() => {
+    if (activeNotification || notificationQueue.length === 0) {
+      return;
+    }
+
+    const [nextNotification, ...remaining] =
+      notificationQueue;
+
+    setNotificationQueue(remaining);
+    setActiveNotification(nextNotification);
+  }, [notificationQueue, activeNotification]);
+
+  useEffect(() => {
+    if (!activeNotification || !character) {
+      return;
+    }
+
+    const characterIdMap: Record<string, string> = {
+      Ciborgue: "cyborg",
+      Tengu: "tengu",
+      Elfo: "elf",
+      Tiefling: "tiefling",
+      Draconata: "dragonborn",
+    };
+
+    const characterId = characterIdMap[character];
+
+    if (!characterId) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        await updateDoc(
+          doc(
+            db,
+            "characters",
+            characterId,
+            "notifications",
+            activeNotification.id
+          ),
+          {
+            lida: true,
+          }
+        );
+      } catch (error) {
+        console.error(
+          "ERRO AO MARCAR NOTIFICAÇÃO COMO LIDA:",
+          error
+        );
+      } finally {
+        setActiveNotification(null);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [activeNotification, character]);
 
   /* =======================================================
      ADICIONAR ITEM
@@ -724,7 +894,11 @@ export default function InventoryScreen() {
       const categoriaAutomatica =
         getInventoryCategory(itemName);
 
-      const itemRef = doc(
+      const quantity = Math.max(1, parseInt(newItemQuantity, 10) || 1);
+
+      // Se o item já existe no inventário, acumula a quantidade
+      // em vez de criar várias linhas iguais.
+      const inventorySnapshot = await getDocs(
         collection(
           db,
           "characters",
@@ -733,16 +907,51 @@ export default function InventoryScreen() {
         )
       );
 
-      const item: InventoryItem = {
-        id: itemRef.id,
-        nome: itemName,
-        categoria: categoriaAutomatica,
-        categoriaAutomatica,
-      };
+      const existingDoc = inventorySnapshot.docs.find((inventoryDoc) => {
+        const data = inventoryDoc.data();
+        return (
+          String(data.nome ?? "").trim().toLowerCase() ===
+            itemName.toLowerCase() &&
+          (data.categoria ?? "diversos") === categoriaAutomatica
+        );
+      });
 
-      await setDoc(itemRef, item);
+      if (existingDoc) {
+        const currentQuantity = Math.max(
+          1,
+          Number(existingDoc.data().quantidade) || 1
+        );
+
+        await setDoc(
+          existingDoc.ref,
+          {
+            quantidade: currentQuantity + quantity,
+          },
+          { merge: true }
+        );
+      } else {
+        const itemRef = doc(
+          collection(
+            db,
+            "characters",
+            characterId,
+            "inventory"
+          )
+        );
+
+        const item: InventoryItem = {
+          id: itemRef.id,
+          nome: itemName,
+          categoria: categoriaAutomatica,
+          categoriaAutomatica,
+          quantidade: quantity,
+        };
+
+        await setDoc(itemRef, item);
+      }
 
       setNewItem("");
+      setNewItemQuantity("1");
 
       Keyboard.dismiss();
     } catch (error) {
@@ -855,18 +1064,39 @@ export default function InventoryScreen() {
     try {
       setSaving(true);
 
-      await deleteDoc(
-        doc(
-          db,
-          "characters",
-          characterId,
-          "inventory",
-          itemToDelete.id
-        )
+      const quantityToRemove = Math.max(
+        1,
+        parseInt(deleteQuantity, 10) || 1
       );
+
+      const itemRef = doc(
+        db,
+        "characters",
+        characterId,
+        "inventory",
+        itemToDelete.id
+      );
+
+      const currentQuantity = Math.max(
+        1,
+        Number(itemToDelete.quantidade) || 1
+      );
+
+      if (quantityToRemove >= currentQuantity) {
+        await deleteDoc(itemRef);
+      } else {
+        await setDoc(
+          itemRef,
+          {
+            quantidade: currentQuantity - quantityToRemove,
+          },
+          { merge: true }
+        );
+      }
 
       setDeleteModalVisible(false);
       setItemToDelete(null);
+      setDeleteQuantity("1");
     } catch (error) {
       console.error(
         "ERRO AO REMOVER ITEM:",
@@ -913,6 +1143,7 @@ export default function InventoryScreen() {
   async function openTransferModal(item: InventoryItem) {
     setItemToTransfer(item);
     setDestinationCharacter(null);
+    setTransferQuantity("1");
     setTransferModalVisible(true);
     await loadActiveCharacters();
   }
@@ -925,6 +1156,7 @@ export default function InventoryScreen() {
     setTransferModalVisible(false);
     setItemToTransfer(null);
     setDestinationCharacter(null);
+    setTransferQuantity("1");
   }
 
   async function verifyInventories(
@@ -1017,36 +1249,140 @@ export default function InventoryScreen() {
       console.log("📤 ORIGEM:", originId);
       console.log("📥 DESTINO:", destinationId);
 
-      const destinationItemRef = doc(
-        collection(
-          db,
-          "characters",
-          destinationId,
-          "inventory"
-        )
+      const quantityToTransfer = Math.max(
+        1,
+        parseInt(transferQuantity, 10) || 1
       );
 
-      await setDoc(destinationItemRef, {
-        id: destinationItemRef.id,
-        nome: itemToTransfer.nome,
-        categoria: itemToTransfer.categoria,
-        categoriaAutomatica:
-          itemToTransfer.categoriaAutomatica,
+      const originQuantity = Math.max(
+        1,
+        Number(itemToTransfer.quantidade) || 1
+      );
+
+      if (quantityToTransfer > originQuantity) {
+        Alert.alert(
+          "Quantidade inválida",
+          `Você possui apenas ${originQuantity} unidade(s) deste item.`
+        );
+        return;
+      }
+
+      // Procura o mesmo item/categoria no inventário de destino.
+      const destinationInventoryRef = collection(
+        db,
+        "characters",
+        destinationId,
+        "inventory"
+      );
+
+      const destinationSnapshot = await getDocs(
+        destinationInventoryRef
+      );
+
+      const existingDestinationDoc =
+        destinationSnapshot.docs.find((inventoryDoc) => {
+          const data = inventoryDoc.data();
+          return (
+            String(data.nome ?? "").trim().toLowerCase() ===
+              itemToTransfer.nome.trim().toLowerCase() &&
+            (data.categoria ?? "diversos") ===
+              itemToTransfer.categoria
+          );
+        });
+
+      if (existingDestinationDoc) {
+        const destinationQuantity = Math.max(
+          1,
+          Number(existingDestinationDoc.data().quantidade) || 1
+        );
+
+        await setDoc(
+          existingDestinationDoc.ref,
+          {
+            quantidade: destinationQuantity + quantityToTransfer,
+          },
+          { merge: true }
+        );
+      } else {
+        const destinationItemRef = doc(destinationInventoryRef);
+
+        await setDoc(destinationItemRef, {
+          id: destinationItemRef.id,
+          nome: itemToTransfer.nome,
+          categoria: itemToTransfer.categoria,
+          categoriaAutomatica:
+            itemToTransfer.categoriaAutomatica,
+          quantidade: quantityToTransfer,
+        });
+      }
+
+      const originRef = doc(
+        db,
+        "characters",
+        originId,
+        "inventory",
+        itemToTransfer.id
+      );
+
+      if (quantityToTransfer >= originQuantity) {
+        await deleteDoc(originRef);
+      } else {
+        await setDoc(
+          originRef,
+          {
+            quantidade: originQuantity - quantityToTransfer,
+          },
+          { merge: true }
+        );
+      }
+
+      console.log("✅ QUANTIDADE REMOVIDA DA ORIGEM");
+
+      /*
+       * A transferência também cria uma notificação persistente
+       * no personagem destino. O onSnapshot do Inventário vai
+       * exibi-la imediatamente se ele estiver com a tela aberta.
+       */
+      let senderName = character;
+
+      try {
+        const originCharacterSnapshot = await getDoc(
+          doc(db, "characters", originId)
+        );
+
+        if (originCharacterSnapshot.exists()) {
+          senderName =
+            String(
+              originCharacterSnapshot.data().nome ?? ""
+            ).trim() || character;
+        }
+      } catch (error) {
+        console.error(
+          "ERRO AO BUSCAR NOME DO REMETENTE:",
+          error
+        );
+      }
+
+      const notificationsRef = collection(
+        db,
+        "characters",
+        destinationId,
+        "notifications"
+      );
+
+      await addDoc(notificationsRef, {
+        tipo: "item_recebido",
+        titulo: "ITEM RECEBIDO",
+        itemNome: itemToTransfer.nome,
+        quantidade: quantityToTransfer,
+        remetenteId: originId,
+        remetenteNome: senderName,
+        lida: false,
+        criadaEm: serverTimestamp(),
       });
 
+      console.log("🔔 NOTIFICAÇÃO DE RECEBIMENTO CRIADA");
       console.log("✅ ITEM ADICIONADO AO DESTINO");
-
-      await deleteDoc(
-        doc(
-          db,
-          "characters",
-          originId,
-          "inventory",
-          itemToTransfer.id
-        )
-      );
-
-      console.log("✅ ITEM REMOVIDO DA ORIGEM");
 
       setTransferModalVisible(false);
       setItemToTransfer(null);
@@ -1101,12 +1437,17 @@ export default function InventoryScreen() {
           />
         </Pressable>
 
-        <Text
-          style={styles.itemName}
-          numberOfLines={2}
-        >
-          {item.nome}
-        </Text>
+        <View style={styles.itemNameContainer}>
+          <Text
+            style={styles.itemName}
+            numberOfLines={2}
+          >
+            {item.nome}
+          </Text>
+          <Text style={styles.itemQuantity}>
+            ×{item.quantidade}
+          </Text>
+        </View>
 
         <Pressable
           style={styles.transferButton}
@@ -1150,7 +1491,36 @@ export default function InventoryScreen() {
   ======================================================= */
 
   return (
-    <SafeAreaView style={styles.container}>
+    <>
+      {activeNotification && (
+        <Pressable
+          style={styles.receivedNotification}
+          onPress={() => setActiveNotification(null)}
+        >
+          <Text style={styles.receivedNotificationTitle}>
+            ITEM RECEBIDO
+          </Text>
+
+          <Text style={styles.receivedNotificationText}>
+            Você recebeu{" "}
+            <Text style={styles.receivedNotificationHighlight}>
+              {activeNotification.quantidade}×{" "}
+              {activeNotification.itemNome}
+            </Text>{" "}
+            de{" "}
+            <Text style={styles.receivedNotificationHighlight}>
+              {activeNotification.remetenteNome}
+            </Text>
+            .
+          </Text>
+
+          <Text style={styles.receivedNotificationHint}>
+            Toque para fechar
+          </Text>
+        </Pressable>
+      )}
+
+      <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>
           INVENTÁRIO
@@ -1174,6 +1544,17 @@ export default function InventoryScreen() {
           onSubmitEditing={addItem}
           returnKeyType="done"
           autoCapitalize="sentences"
+        />
+
+        <TextInput
+          value={newItemQuantity}
+          onChangeText={(value) =>
+            setNewItemQuantity(value.replace(/[^0-9]/g, ""))
+          }
+          keyboardType="number-pad"
+          placeholder="QTD"
+          placeholderTextColor="#555"
+          style={styles.quantityInput}
         />
 
         <Pressable
@@ -1255,9 +1636,24 @@ export default function InventoryScreen() {
                 </Text>
 
                 <Text style={styles.confirmModalText}>
-                  ESTE ITEM SERÁ REMOVIDO DO INVENTÁRIO.
-                  {'\n'}
-                  ESTA AÇÃO NÃO PODE SER DESFEITA.
+                  QUANTIDADE ATUAL: {itemToDelete.quantidade}
+                </Text>
+
+                <View style={styles.quantityRow}>
+                  <Text style={styles.quantityLabel}>REMOVER</Text>
+                  <TextInput
+                    value={deleteQuantity}
+                    onChangeText={(value) =>
+                      setDeleteQuantity(value.replace(/[^0-9]/g, ""))
+                    }
+                    keyboardType="number-pad"
+                    style={styles.modalQuantityInput}
+                  />
+                  <Text style={styles.quantityUnit}>UN.</Text>
+                </View>
+
+                <Text style={styles.confirmModalText}>
+                  SE A QUANTIDADE CHEGAR A ZERO, O ITEM SERÁ REMOVIDO.
                 </Text>
               </>
             )}
@@ -1318,6 +1714,25 @@ export default function InventoryScreen() {
               </Text>
             )}
 
+            {itemToTransfer && (
+              <Text style={styles.confirmModalText}>
+                DISPONÍVEL: {itemToTransfer.quantidade} UN.
+              </Text>
+            )}
+
+            <View style={styles.quantityRow}>
+              <Text style={styles.quantityLabel}>TRANSFERIR</Text>
+              <TextInput
+                value={transferQuantity}
+                onChangeText={(value) =>
+                  setTransferQuantity(value.replace(/[^0-9]/g, ""))
+                }
+                keyboardType="number-pad"
+                style={styles.modalQuantityInput}
+              />
+              <Text style={styles.quantityUnit}>UN.</Text>
+            </View>
+
             <Text style={styles.confirmModalText}>
               PERSONAGENS ATIVOS
             </Text>
@@ -1376,7 +1791,7 @@ export default function InventoryScreen() {
             {destinationCharacter && itemToTransfer && (
               <View style={styles.transferConfirmation}>
                 <Text style={styles.transferConfirmationText}>
-                  TRANSFERIR "{itemToTransfer.nome}" PARA
+                  TRANSFERIR {transferQuantity || "0"}x "{itemToTransfer.nome}" PARA
                 </Text>
 
                 <Text style={styles.transferConfirmationName}>
@@ -1539,6 +1954,7 @@ export default function InventoryScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </>
   );
 }
 
@@ -1547,6 +1963,58 @@ export default function InventoryScreen() {
 ========================================================= */
 
 const styles = StyleSheet.create({
+  receivedNotification: {
+    position: "absolute",
+    top: "50%",
+    left: 22,
+    right: 22,
+    zIndex: 9999,
+    elevation: 30,
+    backgroundColor: "#090909",
+    borderWidth: 2,
+    borderColor: "#777",
+    borderRadius: 14,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    transform: [{ translateY: -110 }],
+    shadowColor: "#000",
+    shadowOpacity: 0.8,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+  },
+
+  receivedNotificationTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 3,
+    textAlign: "center",
+  },
+
+  receivedNotificationText: {
+    color: "#ddd",
+    fontSize: 20,
+    lineHeight: 30,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 18,
+  },
+
+  receivedNotificationHighlight: {
+    color: "#fff",
+    fontSize: 21,
+    fontWeight: "900",
+  },
+
+  receivedNotificationHint: {
+    color: "#777",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    textAlign: "center",
+    marginTop: 20,
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#050505",
@@ -1590,6 +2058,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     color: "#fff",
     fontSize: 14,
+  },
+
+  quantityInput: {
+    width: 58,
+    height: 48,
+    marginLeft: 8,
+    backgroundColor: "#0d0d0d",
+    borderWidth: 1,
+    borderColor: "#222",
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    color: "#fff",
+    fontSize: 14,
+    textAlign: "center",
   },
 
   addButton: {
@@ -1639,12 +2121,27 @@ const styles = StyleSheet.create({
     height: 31,
   },
 
+  itemNameContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
   itemName: {
     flex: 1,
     color: "#eee",
     fontSize: 15,
     fontWeight: "500",
     paddingVertical: 10,
+  },
+
+  itemQuantity: {
+    color: "#777",
+    fontSize: 13,
+    fontWeight: "700",
+    marginLeft: 8,
+    marginRight: 4,
   },
 
   deleteButton: {
@@ -1835,6 +2332,40 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     marginTop: 10,
+  },
+
+  quantityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 16,
+    gap: 8,
+  },
+
+  quantityLabel: {
+    color: "#888",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  modalQuantityInput: {
+    width: 70,
+    height: 42,
+    backgroundColor: "#050505",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 6,
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+
+  quantityUnit: {
+    color: "#555",
+    fontSize: 10,
+    fontWeight: "800",
   },
 
   confirmModalText: {

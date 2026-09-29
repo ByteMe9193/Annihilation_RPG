@@ -113,6 +113,19 @@ type NPCRevealed = {
   relacao?: boolean;
 };
 
+type NPCAccessInfo = {
+  nome?: boolean;
+  arquetipo?: boolean;
+  status?: boolean;
+  nivelAcesso?: boolean;
+  relacao?: boolean;
+};
+
+type NPCAccess = {
+  descoberto?: boolean;
+  informacoes?: NPCAccessInfo;
+};
+
 type NPC = {
   id: string;
   classe: string;
@@ -211,6 +224,7 @@ export default function CardsScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [npcs, setNpcs] = useState<NPC[]>([]);
+  const [npcAccess, setNpcAccess] = useState<Record<string, NPCAccess>>({});
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const [npcClassOpen, setNpcClassOpen] = useState<Record<string, boolean>>({
     Guarda: true,
@@ -224,6 +238,37 @@ export default function CardsScreen() {
   useEffect(() => {
     loadCards();
   }, []);
+
+  // Mantém os Tiers das Skill Cards sincronizados em tempo real com o GM.
+  // Quando o GM libera/bloqueia um Tier em characters/{personagem},
+  // a tela do jogador atualiza imediatamente.
+  useEffect(() => {
+    if (!character) return;
+
+    const characterId = firebaseIds[character];
+    if (!characterId) return;
+
+    const unsubscribe = onSnapshot(
+      doc(db, "characters", characterId),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        const data = snapshot.data();
+        const firebaseTiers = data.skillCardTiers ?? {};
+
+        setUnlockedTiers({
+          tier1: firebaseTiers.tier1 === true,
+          tier2: firebaseTiers.tier2 === true,
+          tier3: firebaseTiers.tier3 === true,
+        });
+      },
+      (err) => {
+        console.error("ERRO AO SINCRONIZAR TIERS:", err);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [character]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -242,6 +287,40 @@ export default function CardsScreen() {
     return () => unsubscribe();
   }, []);
 
+
+  useEffect(() => {
+    if (!character) {
+      setNpcAccess({});
+      return;
+    }
+
+    const characterId = firebaseIds[character];
+
+    if (!characterId) {
+      setNpcAccess({});
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      collection(db, "characters", characterId, "npcAccess"),
+      (snapshot) => {
+        const accessMap: Record<string, NPCAccess> = {};
+
+        snapshot.docs.forEach((accessDoc) => {
+          accessMap[accessDoc.id] = accessDoc.data() as NPCAccess;
+        });
+
+        setNpcAccess(accessMap);
+      },
+      (err) => {
+        console.error("ERRO AO SINCRONIZAR ACESSO DOS NPCs:", err);
+        setNpcAccess({});
+      },
+    );
+
+    return () => unsubscribe();
+  }, [character]);
+
   useEffect(() => {
     if (!selectedNpcId || !character) {
       setNpcNotes("");
@@ -258,12 +337,13 @@ export default function CardsScreen() {
       .catch((err) => console.error("ERRO AO CARREGAR NOTA:", err));
   }, [selectedNpcId, character]);
 
-  function getNpcDisplayName(npc: NPC) {
-    return npc.revelado?.nome ? npc.nomeVerdadeiro : "";
+  function getNpcAccess(npc: NPC | null): NPCAccess {
+    if (!npc) return {};
+    return npcAccess[npc.id] ?? {};
   }
 
   function getNpcInfoName(npc: NPC) {
-    return npc.revelado?.nome
+    return getNpcAccess(npc).informacoes?.nome === true
       ? npc.nomeVerdadeiro.toUpperCase()
       : "DESCONHECIDO";
   }
@@ -1350,7 +1430,16 @@ export default function CardsScreen() {
     );
   }
 
-  const discoveredNpcs = npcs.filter((npc) => npc.descoberto === true);
+  /*
+   * A descoberta individual vem EXCLUSIVAMENTE de:
+   * characters/{personagem}/npcAccess/{npc}.descoberto
+   *
+   * O campo `descoberto` de npcCards é global e não controla
+   * se este personagem pode ver o NPC.
+   */
+  const discoveredNpcs = npcs.filter(
+    (npc) => npcAccess[npc.id]?.descoberto === true,
+  );
 
   const npcClasses = ["Guarda", "Cientista", "Operário", "IA"];
 
@@ -1519,7 +1608,7 @@ export default function CardsScreen() {
                               <View style={styles.npcInfoCell}>
                                 <Text style={styles.npcInfoCellLabel}>ARQUÉTIPO</Text>
                                 <Text style={styles.npcInfoCellValue}>
-                                  {selectedNpc.revelado?.arquetipo
+                                  {getNpcAccess(selectedNpc).informacoes?.arquetipo
                                     ? selectedNpc.arquetipo.toUpperCase()
                                     : "DESCONHECIDO"}
                                 </Text>
@@ -1529,7 +1618,7 @@ export default function CardsScreen() {
                             <View style={styles.npcInfoCell}>
                               <Text style={styles.npcInfoCellLabel}>STATUS</Text>
                               <Text style={styles.npcInfoCellValue}>
-                                {selectedNpc.revelado?.status
+                                {getNpcAccess(selectedNpc).informacoes?.status
                                   ? selectedNpc.status.toUpperCase()
                                   : "DESCONHECIDO"}
                               </Text>
@@ -1538,7 +1627,7 @@ export default function CardsScreen() {
                             <View style={styles.npcInfoCell}>
                               <Text style={styles.npcInfoCellLabel}>NÍVEL DE ACESSO</Text>
                               <Text style={styles.npcInfoCellValue}>
-                                {selectedNpc.revelado?.nivelAcesso
+                                {getNpcAccess(selectedNpc).informacoes?.nivelAcesso
                                   ? String(selectedNpc.nivelAcesso).toUpperCase()
                                   : "DESCONHECIDO"}
                               </Text>
@@ -1547,7 +1636,7 @@ export default function CardsScreen() {
                             <View style={styles.npcInfoCell}>
                               <Text style={styles.npcInfoCellLabel}>RELAÇÃO</Text>
                               <Text style={styles.npcInfoCellValue}>
-                                {selectedNpc.revelado?.relacao
+                                {getNpcAccess(selectedNpc).informacoes?.relacao
                                   ? selectedNpc.relacao.toUpperCase()
                                   : "DESCONHECIDO"}
                               </Text>
