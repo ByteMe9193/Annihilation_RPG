@@ -13,7 +13,7 @@
     "android": {
       "backgroundColor": "#000000",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE"
+        "backgroundColor": "#000000"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -22,7 +22,7 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
-      "package": "com.anonymous.Annihilation"
+      "package": "com.lorven.Annihilation"
     },
     "web": {
       "output": "static",
@@ -33,7 +33,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF"
+          "image": "./assets/images/splash-icon.png",
+          "backgroundColor": "#000000",
+          "resizeMode": "contain"
         }
       ],
       "expo-asset",
