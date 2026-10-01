@@ -31,8 +31,8 @@ export function BottomNavigation() {
 
   const navigationItems: NavigationItem[] = [
     {
-      label: "EVIDÊNCIAS",
-      route: "/menu/evidences",
+      label: "DOCUMENTOS",
+      route: "/menu/documents",
       icon: <EvidenceIcon size={22} />,
     },
     {

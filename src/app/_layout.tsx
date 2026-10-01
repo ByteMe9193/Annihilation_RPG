@@ -3,7 +3,6 @@ import * as SplashScreen from "expo-splash-screen";
 import {
   Animated,
   Modal,
-  Vibration,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,19 +12,16 @@ import {
 } from "react-native";
 import { PaperProvider } from "react-native-paper";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
-import { VolumeManager } from "react-native-volume-manager";
+import Constants from "expo-constants";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useEffect, useMemo, useState } from "react";
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import {
-  doc,
-  increment,
-  onSnapshot,
-  updateDoc,
-} from "firebase/firestore";
+import { doc, increment, onSnapshot, updateDoc } from "firebase/firestore";
 
 import { db } from "@/services/firebase/config";
 
@@ -49,18 +45,33 @@ type ClassData = {
   simbolo: string;
 };
 
+const isExpoGo = Constants.executionEnvironment === "storeClient";
+
+async function setDeviceVolume(volume: number) {
+  if (isExpoGo) {
+    return;
+  }
+
+  try {
+    const { VolumeManager } = require("react-native-volume-manager");
+
+    await VolumeManager.setVolume(volume, {
+      type: "music",
+      showUI: false,
+      playSound: false,
+    });
+  } catch (error) {
+    console.warn("VolumeManager indisponível:", error);
+  }
+}
+
 const classes: ClassData[] = [
   {
     id: "Duelista",
     simbolo: "⚔",
     descricao:
       "Você é uma força da natureza destinada a ser uma máquina de combate. Suas memórias revelam que antes de tudo isso, você era um guerrilheiro, isso te preenche com uma força interior.",
-    efeitos: [
-      "+3 FOR",
-      "+1 VIG",
-      "+1 AGI",
-      "+10 Vida Máxima",
-    ],
+    efeitos: ["+3 FOR", "+1 VIG", "+1 AGI", "+10 Vida Máxima"],
   },
 
   {
@@ -68,12 +79,7 @@ const classes: ClassData[] = [
     simbolo: "◈",
     descricao:
       "Você se lembra de seu dever e instinto natural. Suas memórias revelam que antes disso tudo, você era um assassino treinado, isso traz à tona seu passado sombrio e a habilidade de acertar praticamente todos os seus golpes.",
-    efeitos: [
-      "+3 DES",
-      "+2 AGI",
-      "+2 Vida Máxima",
-      "+5 Evasão",
-    ],
+    efeitos: ["+3 DES", "+2 AGI", "+2 Vida Máxima", "+5 Evasão"],
   },
 
   {
@@ -81,12 +87,7 @@ const classes: ClassData[] = [
     simbolo: "✦",
     descricao:
       "Você se lembra de sua vida acadêmica e sua habilidade natural com magia. Suas memórias revelam que antes disso tudo, você era um arcanista poderoso, isso te permite lançar magias em uma escala maior.",
-    efeitos: [
-      "+4 INT",
-      "+1 DES",
-      "+3 Vida Máxima",
-      "+2 Evasão",
-    ],
+    efeitos: ["+4 INT", "+1 DES", "+3 Vida Máxima", "+2 Evasão"],
   },
 
   {
@@ -94,12 +95,7 @@ const classes: ClassData[] = [
     simbolo: "✚",
     descricao:
       "Você se lembra de sua vida passada cuidando dos feridos e indefesos. Suas memórias revelam que antes de tudo isso, você era um médico de batalha, isso te permite curar com mais eficiência e proteger seus aliados de golpes letais.",
-    efeitos: [
-      "+3 VIG",
-      "+1 AGI",
-      "+1 INT",
-      "+10 Vida Máxima",
-    ],
+    efeitos: ["+3 VIG", "+1 AGI", "+1 INT", "+10 Vida Máxima"],
   },
 
   {
@@ -107,12 +103,7 @@ const classes: ClassData[] = [
     simbolo: "⚙",
     descricao:
       "Você se lembra que ama descobrir coisas novas. Suas memórias revelam que antes dessa bagunça, você era um faz tudo, isso te permite hackear terminais, operar rádios com eficiência e perceber coisas que apenas olhos curiosos e detalhistas perceberiam.",
-    efeitos: [
-      "+3 INT",
-      "+2 PRE",
-      "+4 Vida Máxima",
-      "+2 Evasão",
-    ],
+    efeitos: ["+3 INT", "+2 PRE", "+4 Vida Máxima", "+2 Evasão"],
   },
 
   {
@@ -120,12 +111,7 @@ const classes: ClassData[] = [
     simbolo: "◇",
     descricao:
       "Você se lembra de ter uma vida sofrida, sem um lugar fixo, sem raízes, sem alguém para voltar. Suas memórias revelam que antes de ser pego, você era um sobrevivente, isso te permite um equilíbrio de atributos e uma tendência a conseguir mais o que deseja.",
-    efeitos: [
-      "+2 FOR",
-      "+2 VIG",
-      "+1 AGI",
-      "+5 Vida Máxima",
-    ],
+    efeitos: ["+2 FOR", "+2 VIG", "+1 AGI", "+5 Vida Máxima"],
   },
 ];
 
@@ -136,7 +122,6 @@ const firebaseIds: Record<string, string> = {
   Tiefling: "tiefling",
   Draconata: "dragonborn",
 };
-
 
 type AlertData = {
   ativo?: boolean;
@@ -155,9 +140,14 @@ function AlertBar() {
   });
 
   const progress = useState(() => new Animated.Value(0))[0];
+
   const bloomOpacity = useState(() => new Animated.Value(0.12))[0];
-  const soundRef = useState<{ current: ReturnType<typeof createAudioPlayer> | null }>(() => ({ current: null }))[0];
-  const vibrationIntervalRef = useState<{ current: ReturnType<typeof setInterval> | null }>(() => ({ current: null }))[0];
+
+  const soundRef = useState<{
+    current: ReturnType<typeof createAudioPlayer> | null;
+  }>(() => ({
+    current: null,
+  }))[0];
 
   useEffect(() => {
     const alertRef = doc(db, "game", "alert");
@@ -166,7 +156,12 @@ function AlertBar() {
       alertRef,
       (snapshot) => {
         if (!snapshot.exists()) {
-          setAlert({ ativo: false, porcentagem: 0, disparo: 0 });
+          setAlert({
+            ativo: false,
+            porcentagem: 0,
+            disparo: 0,
+          });
+
           return;
         }
 
@@ -174,7 +169,10 @@ function AlertBar() {
 
         setAlert({
           ativo: data.ativo === true,
-          porcentagem: Math.max(0, Math.min(100, Number(data.porcentagem) || 0)),
+          porcentagem: Math.max(
+            0,
+            Math.min(100, Number(data.porcentagem) || 0),
+          ),
           disparo: Number(data.disparo) || 0,
         });
       },
@@ -197,16 +195,12 @@ function AlertBar() {
   useEffect(() => {
     if (!alarmActive) {
       bloomOpacity.stopAnimation();
+
       Animated.timing(bloomOpacity, {
         toValue: 0,
         duration: 250,
         useNativeDriver: true,
       }).start();
-
-      if (vibrationIntervalRef.current) {
-        clearInterval(vibrationIntervalRef.current);
-        vibrationIntervalRef.current = null;
-      }
 
       const sound = soundRef.current;
       soundRef.current = null;
@@ -220,6 +214,7 @@ function AlertBar() {
     }
 
     bloomOpacity.setValue(0.22);
+
     Animated.loop(
       Animated.sequence([
         Animated.timing(bloomOpacity, {
@@ -227,6 +222,7 @@ function AlertBar() {
           duration: 420,
           useNativeDriver: true,
         }),
+
         Animated.timing(bloomOpacity, {
           toValue: 0.12,
           duration: 420,
@@ -235,34 +231,67 @@ function AlertBar() {
       ]),
     ).start();
 
-    Vibration.vibrate([0, 180, 120, 180, 520], false);
-    vibrationIntervalRef.current = setInterval(() => {
-      Vibration.vibrate([0, 180, 120, 180, 520], false);
-    }, 1000);
-
     let cancelled = false;
+
+    /*
+     * ============================================================
+     * ALERTA SONORO
+     *
+     * O GM recebe somente o alerta visual.
+     *
+     * Jogadores recebem:
+     * - redução do volume físico para 50%
+     * - alarme sonoro
+     * ============================================================
+     */
 
     (async () => {
       try {
-        await VolumeManager.setVolume(0.5, {
-          type: "music",
-          showUI: false,
-          playSound: false,
-        });
-      } catch (error) {
-        console.error("❌ ERRO AO AJUSTAR VOLUME FÍSICO:", error);
-      }
+        const userMode = await AsyncStorage.getItem("userMode");
 
-      try {
+        /*
+         * O GM não recebe áudio nem vibração.
+         */
+        if (cancelled || userMode === "gm") {
+          return;
+        }
+
+        /*
+         * ========================================================
+         * VOLUME FÍSICO
+         *
+         * O volume do Android é colocado em 50%.
+         * Não restauramos o volume posteriormente.
+         * ========================================================
+         */
+
+        try {
+          await setDeviceVolume(0.5);
+        } catch (error) {
+          console.error("❌ ERRO AO AJUSTAR VOLUME FÍSICO:", error);
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * ========================================================
+         * ÁUDIO DO ALARME
+         * ========================================================
+         */
+
         await setAudioModeAsync({
           playsInSilentMode: true,
           shouldPlayInBackground: false,
           interruptionMode: "duckOthers",
         });
 
-        const player = createAudioPlayer(
-          require("@/assets/sfx/alarm.mp3"),
-        );
+        if (cancelled) {
+          return;
+        }
+
+        const player = createAudioPlayer(require("@/assets/sfx/alarm.mp3"));
 
         player.loop = true;
         player.volume = 1.0;
@@ -274,30 +303,31 @@ function AlertBar() {
         }
 
         soundRef.current = player;
+
         player.play();
       } catch (error) {
-        console.error("❌ ERRO AO REPRODUZIR ALARME:", error);
+        console.error("❌ ERRO AO ATIVAR ALERTA SONORO:", error);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [alarmActive, bloomOpacity, soundRef, vibrationIntervalRef]);
+  }, [alarmActive, bloomOpacity, soundRef]);
 
+  /*
+   * Limpeza geral.
+   */
   useEffect(() => {
     return () => {
-      if (vibrationIntervalRef.current) {
-        clearInterval(vibrationIntervalRef.current);
-      }
-
       const sound = soundRef.current;
+
       if (sound) {
         sound.pause();
         sound.remove();
       }
     };
-  }, [soundRef, vibrationIntervalRef]);
+  }, [soundRef]);
 
   if (!alert.ativo) {
     return null;
@@ -315,22 +345,51 @@ function AlertBar() {
       {alarmActive && (
         <Animated.View
           pointerEvents="none"
-          style={[styles.alertBloomLayer, { opacity: bloomOpacity }]}
+          style={[
+            styles.alertBloomLayer,
+            {
+              opacity: bloomOpacity,
+            },
+          ]}
         >
           <Svg width={width} height={height}>
             <Defs>
               <RadialGradient id="alertBloom" cx="0%" cy="0%" r="100%">
                 <Stop offset="0%" stopColor="#ff0000" stopOpacity="1" />
+
                 <Stop offset="28%" stopColor="#ff0000" stopOpacity="0.62" />
+
                 <Stop offset="62%" stopColor="#ff0000" stopOpacity="0.22" />
+
                 <Stop offset="100%" stopColor="#ff0000" stopOpacity="0" />
               </RadialGradient>
             </Defs>
 
             <Circle cx={0} cy={0} r={bloomSize} fill="url(#alertBloom)" />
-            <Circle cx={width} cy={0} r={bloomSize} fill="url(#alertBloom)" transform={`rotate(90 ${width} 0)`} />
-            <Circle cx={0} cy={height} r={bloomSize} fill="url(#alertBloom)" transform={`rotate(-90 0 ${height})`} />
-            <Circle cx={width} cy={height} r={bloomSize} fill="url(#alertBloom)" transform={`rotate(180 ${width} ${height})`} />
+
+            <Circle
+              cx={width}
+              cy={0}
+              r={bloomSize}
+              fill="url(#alertBloom)"
+              transform={`rotate(90 ${width} 0)`}
+            />
+
+            <Circle
+              cx={0}
+              cy={height}
+              r={bloomSize}
+              fill="url(#alertBloom)"
+              transform={`rotate(-90 0 ${height})`}
+            />
+
+            <Circle
+              cx={width}
+              cy={height}
+              r={bloomSize}
+              fill="url(#alertBloom)"
+              transform={`rotate(180 ${width} ${height})`}
+            />
           </Svg>
         </Animated.View>
       )}
@@ -338,17 +397,27 @@ function AlertBar() {
       <View
         style={[
           styles.alertOverlay,
-          { top: Math.max(insets.top + 7, 14) },
+          {
+            top: Math.max(insets.top + 7, 14),
+          },
         ]}
       >
         <View style={styles.alertFrame}>
           <View style={styles.alertHeader}>
             <Text style={styles.alertLabel}>ALERTA</Text>
+
             <Text style={styles.alertPercentage}>{alert.porcentagem}%</Text>
           </View>
 
           <View style={styles.alertTrack}>
-            <Animated.View style={[styles.alertProgress, { width: progressWidth }]} />
+            <Animated.View
+              style={[
+                styles.alertProgress,
+                {
+                  width: progressWidth,
+                },
+              ]}
+            />
           </View>
         </View>
       </View>
@@ -379,10 +448,7 @@ export default function RootLayout() {
 
         setSelectedCharacter(character);
       } catch (error) {
-        console.error(
-          "❌ ERRO AO RECUPERAR PERSONAGEM SELECIONADO:",
-          error,
-        );
+        console.error("❌ ERRO AO RECUPERAR PERSONAGEM SELECIONADO:", error);
       }
     }
 
@@ -433,10 +499,7 @@ export default function RootLayout() {
         router.replace("/");
       },
       (error) => {
-        console.error(
-          "❌ ERRO AO SINCRONIZAR BLOQUEIO DA SESSÃO:",
-          error,
-        );
+        console.error("❌ ERRO AO SINCRONIZAR BLOQUEIO DA SESSÃO:", error);
       },
     );
 
@@ -465,6 +528,7 @@ export default function RootLayout() {
     const userModePromise = AsyncStorage.getItem("userMode");
 
     let unsubscribeCharacter: (() => void) | null = null;
+
     let cancelled = false;
 
     async function startClassListener() {
@@ -493,8 +557,7 @@ export default function RootLayout() {
 
           const data = snapshot.data();
 
-          const eventoLiberado =
-            data.eventoClasseLiberado === true;
+          const eventoLiberado = data.eventoClasseLiberado === true;
 
           const classeAtual = data.classe ?? null;
 
@@ -517,10 +580,7 @@ export default function RootLayout() {
           setSelectedClass(null);
         },
         (error) => {
-          console.error(
-            "❌ ERRO AO SINCRONIZAR EVENTO DE CLASSE:",
-            error,
-          );
+          console.error("❌ ERRO AO SINCRONIZAR EVENTO DE CLASSE:", error);
         },
       );
     }
@@ -615,10 +675,7 @@ export default function RootLayout() {
       setClassModalVisible(false);
       setSelectedClass(null);
     } catch (error) {
-      console.error(
-        "❌ ERRO AO ESCOLHER CLASSE:",
-        error,
-      );
+      console.error("❌ ERRO AO ESCOLHER CLASSE:", error);
 
       setSelectedClass(null);
     } finally {
@@ -638,124 +695,114 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <PaperProvider>
         <View style={styles.container}>
-        <View style={styles.stack}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: {
-                backgroundColor: "#000000",
-              },
-            }}
-          />
-        </View>
+          <View style={styles.stack}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: {
+                  backgroundColor: "#000000",
+                },
+              }}
+            />
+          </View>
 
-        <BottomNavigation />
-      </View>
+          <BottomNavigation />
+        </View>
 
         <AnimatedSplashOverlay />
 
         <AlertBar />
 
         <Modal
-        visible={classModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          /*
-           * Não permitimos fechar o evento pelo botão
-           * de voltar. O jogador precisa escolher.
-           */
-        }}
-      >
-        <View style={styles.classModalOverlay}>
-          <View style={styles.classModal}>
-            <Text style={styles.classEventLabel}>
-              EVENTO DESBLOQUEADO
-            </Text>
+          visible={classModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            /*
+             * Não permitimos fechar o evento pelo botão
+             * de voltar. O jogador precisa escolher.
+             */
+          }}
+        >
+          <View style={styles.classModalOverlay}>
+            <View style={styles.classModal}>
+              <Text style={styles.classEventLabel}>EVENTO DESBLOQUEADO</Text>
 
-            <Text style={styles.classTitle}>
-              ESCOLHA SUA CLASSE
-            </Text>
+              <Text style={styles.classTitle}>ESCOLHA SUA CLASSE</Text>
 
-            <Text style={styles.classSubtitle}>
-              Suas memórias começam a retornar.
-              {"\n"}
-              Escolha aquilo que você era antes de tudo isso.
-            </Text>
+              <Text style={styles.classSubtitle}>
+                Suas memórias começam a retornar.
+                {"\n"}
+                Escolha aquilo que você era antes de tudo isso.
+              </Text>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={modalWidth}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              disableIntervalMomentum={true}
-              bounces={false}
-              style={styles.classCarousel}
-              contentContainerStyle={styles.classScroll}
-            >
-              {classList.map((classData) => (
-                <View
-                  key={classData.id}
-                  style={[
-                    styles.classPage,
-                    {
-                      width: modalWidth,
-                    },
-                  ]}
-                >
-                  <View style={styles.classCard}>
-                    <View style={styles.classSymbol}>
-                      <Text style={styles.classSymbolText}>
-                        {classData.simbolo}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.className}>
-                      {classData.id.toUpperCase()}
-                    </Text>
-
-                    <Text style={styles.classDescription}>
-                      {classData.descricao}
-                    </Text>
-
-                    <View style={styles.effectsBox}>
-                      <Text style={styles.effectsTitle}>
-                        EFEITOS
-                      </Text>
-
-                      {classData.efeitos.map((efeito) => (
-                        <Text
-                          key={efeito}
-                          style={styles.effect}
-                        >
-                          {efeito}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={modalWidth}
+                snapToAlignment="start"
+                decelerationRate="fast"
+                disableIntervalMomentum={true}
+                bounces={false}
+                style={styles.classCarousel}
+                contentContainerStyle={styles.classScroll}
+              >
+                {classList.map((classData) => (
+                  <View
+                    key={classData.id}
+                    style={[
+                      styles.classPage,
+                      {
+                        width: modalWidth,
+                      },
+                    ]}
+                  >
+                    <View style={styles.classCard}>
+                      <View style={styles.classSymbol}>
+                        <Text style={styles.classSymbolText}>
+                          {classData.simbolo}
                         </Text>
-                      ))}
-                    </View>
+                      </View>
 
-                    <Pressable
-                      style={[
-                        styles.chooseButton,
-                        loadingClassChoice &&
-                          styles.chooseButtonDisabled,
-                      ]}
-                      disabled={loadingClassChoice}
-                      onPress={() => chooseClass(classData)}
-                    >
-                      <Text style={styles.chooseButtonText}>
-                        {loadingClassChoice &&
-                        selectedClass?.id === classData.id
-                          ? "CONFIRMANDO..."
-                          : "ESCOLHER CLASSE"}
+                      <Text style={styles.className}>
+                        {classData.id.toUpperCase()}
                       </Text>
-                    </Pressable>
+
+                      <Text style={styles.classDescription}>
+                        {classData.descricao}
+                      </Text>
+
+                      <View style={styles.effectsBox}>
+                        <Text style={styles.effectsTitle}>EFEITOS</Text>
+
+                        {classData.efeitos.map((efeito) => (
+                          <Text key={efeito} style={styles.effect}>
+                            {efeito}
+                          </Text>
+                        ))}
+                      </View>
+
+                      <Pressable
+                        style={[
+                          styles.chooseButton,
+                          loadingClassChoice && styles.chooseButtonDisabled,
+                        ]}
+                        disabled={loadingClassChoice}
+                        onPress={() => chooseClass(classData)}
+                      >
+                        <Text style={styles.chooseButtonText}>
+                          {loadingClassChoice &&
+                          selectedClass?.id === classData.id
+                            ? "CONFIRMANDO..."
+                            : "ESCOLHER CLASSE"}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              ))}
-            </ScrollView>
+                ))}
+              </ScrollView>
+            </View>
           </View>
-        </View>
         </Modal>
       </PaperProvider>
     </SafeAreaProvider>
@@ -886,19 +933,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
 
-  /*
-   * Cada página ocupa exatamente uma tela do carrossel.
-   * O conteúdo visual fica dentro do classCard.
-   */
   classPage: {
     alignItems: "center",
     justifyContent: "flex-start",
     paddingHorizontal: 0,
   },
 
-  /*
-   * Container visual centralizado dentro de cada página.
-   */
   classCard: {
     width: "88%",
     maxWidth: 390,

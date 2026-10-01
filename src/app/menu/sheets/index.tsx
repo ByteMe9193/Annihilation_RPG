@@ -1386,15 +1386,9 @@ export default function CompleteSheet() {
         <View style={styles.section}>
           <SectionHeader title="CLASSE" />
 
-          <TextInput
-            value={classe}
-            onChangeText={setClasse}
-            onBlur={() => saveField("classe", classe)}
-            placeholder="Nenhuma classe definida"
-            placeholderTextColor="#555"
-            style={styles.textField}
-            selectionColor="#ffffff"
-          />
+          <Text style={styles.classValue}>
+            {classe || "Nenhuma classe definida"}
+          </Text>
         </View>
 
         {/* =================================================
@@ -2374,5 +2368,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
 
     textAlignVertical: "center",
+
+    
   },
+
+  classValue: {
+  color: "#fff",
+  fontSize: 17,
+  marginTop: 12,
+  paddingVertical: 4,
+},
 });

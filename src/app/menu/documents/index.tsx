@@ -1,9 +1,9 @@
 import { View, Text, StyleSheet } from "react-native";
 
-export default function EvidencesScreen() {
+export default function DocumentsScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Evidências</Text>
+      <Text style={styles.text}>Documentos</Text>
     </View>
   );
 }
