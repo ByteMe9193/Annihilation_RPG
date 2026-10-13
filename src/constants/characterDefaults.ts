@@ -58,7 +58,7 @@ export const characterDefaults = {
       {
         tipo: "raca",
         descricao:
-          "Ciborgue. Número de Série 1846007.",
+          "Ciborgue. Número de Série 4078007.",
       },
       {
         tipo: "fisico",
