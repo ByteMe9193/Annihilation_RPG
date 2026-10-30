@@ -21,6 +21,11 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.VIBRATE"
       ],
       "package": "com.lorven.Annihilation"
@@ -53,6 +58,12 @@
       "eas": {
         "projectId": "01fa0937-829d-452b-a1ff-86ba4642cd2e"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/01fa0937-829d-452b-a1ff-86ba4642cd2e"
     }
   }
 }

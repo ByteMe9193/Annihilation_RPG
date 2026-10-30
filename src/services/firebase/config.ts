@@ -1,5 +1,10 @@
+
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  initializeFirestore,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBqXEVvmheF1m9uK4N8vpLoMLCxRyXYQ2s",
@@ -13,6 +18,27 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
 
 export { db };
+
+export async function testarFirestore() {
+  console.log("[TESTE FIRESTORE] Iniciando leitura...");
+
+  try {
+    const referencia = doc(db, "game", "session");
+    const resultado = await getDoc(referencia);
+
+    console.log("[TESTE FIRESTORE] Leitura concluída:", {
+      existe: resultado.exists(),
+      dados: resultado.exists() ? resultado.data() : null,
+    });
+
+    return true;
+  } catch (erro) {
+    console.error("[TESTE FIRESTORE] Falha na leitura:", erro);
+    return false;
+  }
+}

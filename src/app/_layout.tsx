@@ -28,6 +28,8 @@ import { db } from "@/services/firebase/config";
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { BottomNavigation } from "@/components/BottomNavigation";
 
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+
 SplashScreen.preventAutoHideAsync();
 
 type ClassId =
@@ -692,120 +694,122 @@ export default function RootLayout() {
   const modalWidth = Math.min(screenWidth - 36, 520);
 
   return (
-    <SafeAreaProvider>
-      <PaperProvider>
-        <View style={styles.container}>
-          <View style={styles.stack}>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: {
-                  backgroundColor: "#000000",
-                },
-              }}
-            />
-          </View>
-
-          <BottomNavigation />
-        </View>
-
-        <AnimatedSplashOverlay />
-
-        <AlertBar />
-
-        <Modal
-          visible={classModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
-            /*
-             * Não permitimos fechar o evento pelo botão
-             * de voltar. O jogador precisa escolher.
-             */
-          }}
-        >
-          <View style={styles.classModalOverlay}>
-            <View style={styles.classModal}>
-              <Text style={styles.classEventLabel}>EVENTO DESBLOQUEADO</Text>
-
-              <Text style={styles.classTitle}>ESCOLHA SUA CLASSE</Text>
-
-              <Text style={styles.classSubtitle}>
-                Suas memórias começam a retornar.
-                {"\n"}
-                Escolha aquilo que você era antes de tudo isso.
-              </Text>
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                snapToInterval={modalWidth}
-                snapToAlignment="start"
-                decelerationRate="fast"
-                disableIntervalMomentum={true}
-                bounces={false}
-                style={styles.classCarousel}
-                contentContainerStyle={styles.classScroll}
-              >
-                {classList.map((classData) => (
-                  <View
-                    key={classData.id}
-                    style={[
-                      styles.classPage,
-                      {
-                        width: modalWidth,
-                      },
-                    ]}
-                  >
-                    <View style={styles.classCard}>
-                      <View style={styles.classSymbol}>
-                        <Text style={styles.classSymbolText}>
-                          {classData.simbolo}
-                        </Text>
-                      </View>
-
-                      <Text style={styles.className}>
-                        {classData.id.toUpperCase()}
-                      </Text>
-
-                      <Text style={styles.classDescription}>
-                        {classData.descricao}
-                      </Text>
-
-                      <View style={styles.effectsBox}>
-                        <Text style={styles.effectsTitle}>EFEITOS</Text>
-
-                        {classData.efeitos.map((efeito) => (
-                          <Text key={efeito} style={styles.effect}>
-                            {efeito}
-                          </Text>
-                        ))}
-                      </View>
-
-                      <Pressable
-                        style={[
-                          styles.chooseButton,
-                          loadingClassChoice && styles.chooseButtonDisabled,
-                        ]}
-                        disabled={loadingClassChoice}
-                        onPress={() => chooseClass(classData)}
-                      >
-                        <Text style={styles.chooseButtonText}>
-                          {loadingClassChoice &&
-                          selectedClass?.id === classData.id
-                            ? "CONFIRMANDO..."
-                            : "ESCOLHER CLASSE"}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <PaperProvider>
+          <View style={styles.container}>
+            <View style={styles.stack}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: {
+                    backgroundColor: "#000000",
+                  },
+                }}
+              />
             </View>
+
+            <BottomNavigation />
           </View>
-        </Modal>
-      </PaperProvider>
-    </SafeAreaProvider>
+
+          <AnimatedSplashOverlay />
+
+          <AlertBar />
+
+          <Modal
+            visible={classModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              /*
+               * Não permitimos fechar o evento pelo botão
+               * de voltar. O jogador precisa escolher.
+               */
+            }}
+          >
+            <View style={styles.classModalOverlay}>
+              <View style={styles.classModal}>
+                <Text style={styles.classEventLabel}>EVENTO DESBLOQUEADO</Text>
+
+                <Text style={styles.classTitle}>ESCOLHA SUA CLASSE</Text>
+
+                <Text style={styles.classSubtitle}>
+                  Suas memórias começam a retornar.
+                  {"\n"}
+                  Escolha aquilo que você era antes de tudo isso.
+                </Text>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  snapToInterval={modalWidth}
+                  snapToAlignment="start"
+                  decelerationRate="fast"
+                  disableIntervalMomentum={true}
+                  bounces={false}
+                  style={styles.classCarousel}
+                  contentContainerStyle={styles.classScroll}
+                >
+                  {classList.map((classData) => (
+                    <View
+                      key={classData.id}
+                      style={[
+                        styles.classPage,
+                        {
+                          width: modalWidth,
+                        },
+                      ]}
+                    >
+                      <View style={styles.classCard}>
+                        <View style={styles.classSymbol}>
+                          <Text style={styles.classSymbolText}>
+                            {classData.simbolo}
+                          </Text>
+                        </View>
+
+                        <Text style={styles.className}>
+                          {classData.id.toUpperCase()}
+                        </Text>
+
+                        <Text style={styles.classDescription}>
+                          {classData.descricao}
+                        </Text>
+
+                        <View style={styles.effectsBox}>
+                          <Text style={styles.effectsTitle}>EFEITOS</Text>
+
+                          {classData.efeitos.map((efeito) => (
+                            <Text key={efeito} style={styles.effect}>
+                              {efeito}
+                            </Text>
+                          ))}
+                        </View>
+
+                        <Pressable
+                          style={[
+                            styles.chooseButton,
+                            loadingClassChoice && styles.chooseButtonDisabled,
+                          ]}
+                          disabled={loadingClassChoice}
+                          onPress={() => chooseClass(classData)}
+                        >
+                          <Text style={styles.chooseButtonText}>
+                            {loadingClassChoice &&
+                            selectedClass?.id === classData.id
+                              ? "CONFIRMANDO..."
+                              : "ESCOLHER CLASSE"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        </PaperProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

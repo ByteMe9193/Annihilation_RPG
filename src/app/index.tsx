@@ -22,7 +22,7 @@ import {
 
 import { Snackbar } from "react-native-paper";
 
-import { db } from "@/services/firebase/config";
+import { db, testarFirestore } from "@/services/firebase/config";
 
 const GM_PASSWORD = "3859";
 
@@ -38,6 +38,10 @@ export default function HomeScreen() {
   const [masterModalVisible, setMasterModalVisible] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
   const [masterPasswordError, setMasterPasswordError] = useState(false);
+
+  useEffect(() => {
+  testarFirestore();
+}, []);
 
   /*
    * ============================================================

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 import {
-  Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -50,6 +51,7 @@ type CharacterData = {
   modificacoes?: string;
   classe?: string | null;
   eventoClasseLiberado?: boolean;
+  escolhasImportantes?: Array<{ sessao: number; texto: string; criadoEm: number } | string>;
 };
 
 type NPCData = {
@@ -173,6 +175,7 @@ export default function GM() {
   );
 
   const [loading, setLoading] = useState(false);
+  const [resetModalVisible, setResetModalVisible] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
 
@@ -193,6 +196,9 @@ export default function GM() {
   );
 
   const [selectedTier, setSelectedTier] = useState<1 | 2 | 3>(1);
+
+  const [escolhaSessao, setEscolhaSessao] = useState<1 | 2 | 3>(1);
+  const [escolhaTexto, setEscolhaTexto] = useState("");
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
@@ -632,6 +638,38 @@ export default function GM() {
    * ============================================================
    */
 
+  const registrarEscolhaImportante = async () => {
+    const texto = escolhaTexto.trim();
+
+    if (loading) return;
+    if (!selectedCharacterId) {
+      showMessage("Selecione um personagem alvo.");
+      return;
+    }
+    if (!texto) {
+      showMessage("Escreva o registro da escolha antes de salvar.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await updateDoc(doc(db, "characters", selectedCharacterId), {
+        escolhasImportantes: arrayUnion({
+          sessao: escolhaSessao,
+          texto,
+          criadoEm: Date.now(),
+        }),
+      });
+      setEscolhaTexto("");
+      showMessage(`Escolha registrada para ${selectedCharacterLabel}.`);
+    } catch (error) {
+      console.error("ERRO AO REGISTRAR ESCOLHA IMPORTANTE:", error);
+      showMessage("Não foi possível registrar a escolha importante.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const applyClassEventOperation = async () => {
     if (loading) return;
 
@@ -954,19 +992,12 @@ export default function GM() {
 
   const confirmReset = () => {
     if (loading) return;
+    setResetModalVisible(true);
+  };
 
-    Alert.alert(
-      "RESETAR SISTEMA",
-      "Isso restaura personagens, inventários, NPCs, acessos individuais, notas, pendências e sessão.",
-      [
-        { text: "CANCELAR", style: "cancel" },
-        {
-          text: "RESETAR",
-          style: "destructive",
-          onPress: resetSystem,
-        },
-      ],
-    );
+  const executeReset = async () => {
+    setResetModalVisible(false);
+    await resetSystem();
   };
 
   const selectedCharacterLabel = selectedCharacter
@@ -1301,6 +1332,11 @@ export default function GM() {
         animationType="slide"
         onRequestClose={closeActionModal}
       >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+        >
         <View style={styles.modalBackdrop}>
           <View style={styles.operationModal}>
             <View style={styles.modalHeader}>
@@ -1328,6 +1364,8 @@ export default function GM() {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             >
               {(actionModal === "cards" || actionModal === "npcs") && (
                 <>
@@ -1892,11 +1930,52 @@ export default function GM() {
                       {releaseAction === "liberar" ? "LIBERAR ESCOLHA DE CLASSE" : "BLOQUEAR ESCOLHA DE CLASSE"}
                     </Text>
                   </Pressable>
+
+                  <Text style={styles.modalSectionTitle}>ESCOLHAS IMPORTANTES</Text>
+                  <Text style={styles.largeChoiceSub}>
+                    Registre decisões narrativas da sessão para manter o histórico do personagem. Este registro não altera atributos nem concede recompensas.
+                  </Text>
+
+                  <Text style={styles.inputLabel}>PERSONAGEM DESTINO</Text>
+                  <Text style={styles.modalTargetValue}>{selectedCharacterLabel}</Text>
+
+                  <Text style={styles.inputLabel}>SESSÃO</Text>
+                  <View style={styles.segmentRow}>
+                    {[1, 2, 3].map((sessao) => (
+                      <SegmentButton
+                        key={sessao}
+                        title={`SESSÃO ${sessao}`}
+                        selected={escolhaSessao === sessao}
+                        onPress={() => setEscolhaSessao(sessao as 1 | 2 | 3)}
+                      />
+                    ))}
+                  </View>
+
+                  <Text style={styles.inputLabel}>O QUE ACONTECEU?</Text>
+                  <TextInput
+                    value={escolhaTexto}
+                    onChangeText={setEscolhaTexto}
+                    placeholder="Descreva a escolha ou decisão narrativa dos jogadores..."
+                    placeholderTextColor="#444"
+                    multiline
+                    style={[styles.input, styles.multiline, { minHeight: 100 }]}
+                  />
+
+                  <Pressable
+                    onPress={registrarEscolhaImportante}
+                    disabled={loading || !selectedCharacterId || !escolhaTexto.trim()}
+                    style={[styles.modalExecute, (loading || !selectedCharacterId || !escolhaTexto.trim()) && styles.disabled]}
+                  >
+                    <Text style={styles.modalExecuteText}>
+                      {loading ? "REGISTRANDO..." : "REGISTRAR ESCOLHA NO HISTÓRICO"}
+                    </Text>
+                  </Pressable>
                 </>
               )}
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* MODAL DE PENDÊNCIA */}
@@ -1966,6 +2045,58 @@ export default function GM() {
                 <Text style={styles.modalConfirmText}>CRIAR</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* CONFIRMAÇÃO DE RESET TOTAL — MODAL PRÓPRIO ANIQUILAÇÃO */}
+      <Modal
+        visible={resetModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => !loading && setResetModalVisible(false)}
+      >
+        <View style={styles.resetBackdrop}>
+          <View style={styles.resetModal}>
+            <View style={styles.resetTopLine} />
+            <Text style={styles.resetEyebrow}>ANIQUILAÇÃO // PROTOCOLO 00</Text>
+            <View style={styles.resetWarningMark}>
+              <Text style={styles.resetWarningSymbol}>!</Text>
+            </View>
+            <Text style={styles.resetTitle}>RESET TOTAL</Text>
+            <Text style={styles.resetSubtitle}>AÇÃO IRREVERSÍVEL</Text>
+            <View style={styles.resetDivider} />
+            <Text style={styles.resetBody}>
+              Você está prestes a restaurar o sistema ao estado inicial.
+            </Text>
+            <View style={styles.resetList}>
+              <Text style={styles.resetListItem}>— Personagens e inventários</Text>
+              <Text style={styles.resetListItem}>— NPCs, acessos e anotações</Text>
+              <Text style={styles.resetListItem}>— Pendências e estado da sessão</Text>
+            </View>
+            <Text style={styles.resetFootnote}>
+              TODOS OS DADOS DE PROGRESSO SERÃO PERDIDOS.
+            </Text>
+            <View style={styles.resetButtons}>
+              <Pressable
+                disabled={loading}
+                onPress={() => setResetModalVisible(false)}
+                style={({ pressed }) => [styles.resetCancelButton, pressed && styles.resetPressed]}
+              >
+                <Text style={styles.resetCancelText}>ABORTAR</Text>
+              </Pressable>
+              <Pressable
+                disabled={loading}
+                onPress={executeReset}
+                style={({ pressed }) => [styles.resetConfirmButton, pressed && styles.resetPressed, loading && styles.disabled]}
+              >
+                <Text style={styles.resetConfirmText}>
+                  {loading ? "EXECUTANDO..." : "CONFIRMAR RESET"}
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.resetSystemLabel}>VALTESIA RESEARCH // SISTEMA DE CONTROLE</Text>
           </View>
         </View>
       </Modal>
@@ -2139,6 +2270,148 @@ function DebugCell({ value, label }: { value: number; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  resetBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.88)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 22,
+  },
+  resetModal: {
+    width: "100%",
+    maxWidth: 440,
+    backgroundColor: "#090909",
+    borderWidth: 1,
+    borderColor: "#4a2020",
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 17,
+    overflow: "hidden",
+  },
+  resetTopLine: {
+    height: 2,
+    backgroundColor: "#9e2929",
+    marginTop: -22,
+    marginHorizontal: -22,
+    marginBottom: 21,
+  },
+  resetEyebrow: {
+    color: "#8e3939",
+    fontSize: 9,
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  resetWarningMark: {
+    width: 42,
+    height: 42,
+    borderWidth: 1,
+    borderColor: "#873232",
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 19,
+    marginBottom: 13,
+    transform: [{ rotate: "45deg" }],
+  },
+  resetWarningSymbol: {
+    color: "#c64a4a",
+    fontSize: 25,
+    fontWeight: "300",
+    transform: [{ rotate: "-45deg" }],
+  },
+  resetTitle: {
+    color: "#e7e2df",
+    fontSize: 25,
+    fontWeight: "300",
+    letterSpacing: 4,
+    textAlign: "center",
+  },
+  resetSubtitle: {
+    color: "#a33a3a",
+    fontSize: 9,
+    letterSpacing: 2.2,
+    textAlign: "center",
+    marginTop: 7,
+  },
+  resetDivider: {
+    height: 1,
+    backgroundColor: "#292020",
+    marginVertical: 19,
+  },
+  resetBody: {
+    color: "#b4b0ad",
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: "center",
+  },
+  resetList: {
+    backgroundColor: "#0d0b0b",
+    borderLeftWidth: 2,
+    borderLeftColor: "#642828",
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+    marginTop: 16,
+    gap: 8,
+  },
+  resetListItem: {
+    color: "#88817e",
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  resetFootnote: {
+    color: "#b04444",
+    fontSize: 8,
+    letterSpacing: 1.1,
+    textAlign: "center",
+    lineHeight: 15,
+    marginTop: 17,
+  },
+  resetButtons: {
+    flexDirection: "row",
+    gap: 9,
+    marginTop: 19,
+  },
+  resetCancelButton: {
+    flex: 0.8,
+    minHeight: 45,
+    borderWidth: 1,
+    borderColor: "#303030",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  resetCancelText: {
+    color: "#888",
+    fontSize: 9,
+    letterSpacing: 1.5,
+  },
+  resetConfirmButton: {
+    flex: 1.2,
+    minHeight: 45,
+    backgroundColor: "#581e1e",
+    borderWidth: 1,
+    borderColor: "#a23b3b",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  resetConfirmText: {
+    color: "#f1e7e4",
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 1.1,
+  },
+  resetPressed: {
+    opacity: 0.65,
+  },
+  resetSystemLabel: {
+    color: "#393232",
+    fontSize: 7,
+    letterSpacing: 1,
+    textAlign: "center",
+    marginTop: 18,
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#050505",
@@ -2728,6 +3001,7 @@ const styles = StyleSheet.create({
 
   operationModal: {
     maxHeight: "92%",
+    flexShrink: 1,
     borderTopWidth: 1,
     borderColor: "#333",
     backgroundColor: "#080808",
