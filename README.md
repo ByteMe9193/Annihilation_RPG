@@ -29,7 +29,7 @@ A proposta é fazer do aplicativo parte da ambientação: um terminal da **Valte
 - **Recursos de narrativa:** notificações contextuais, registros de escolhas e controle de eventos da campanha.
 - **Ferramentas de teste:** restauração individual de personagens e reset geral do progresso.
 
-As alterações de dados e os eventos compartilhados utilizam o **Cloud Firestore**. Já os efeitos sonoros são reproduzidos **localmente no dispositivo do Mestre**, usando a saída de áudio configurada no sistema, inclusive Bluetooth quando disponível.
+As alterações de dados e os eventos compartilhados utilizam o **Cloud Firestore**. Já os efeitos sonoros são reproduzidos **localmente no dispositivo do Mestre**, usando a saída de áudio configurada no sistema.
 
 ## Tecnologias
 
