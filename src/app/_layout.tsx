@@ -1,4 +1,4 @@
-import { Stack, router } from "expo-router";
+import { Stack, router, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import {
   Animated,
@@ -6,11 +6,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  StatusBar,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
-import { PaperProvider } from "react-native-paper";
+import { PaperProvider, Snackbar, MD3DarkTheme, MD3LightTheme } from "react-native-paper";
+import { Ionicons } from "@expo/vector-icons";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import Constants from "expo-constants";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
@@ -18,17 +20,24 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { doc, increment, onSnapshot, updateDoc } from "firebase/firestore";
 
 import { db } from "@/services/firebase/config";
+import { tenguHasOpportunityCard } from "@/services/tenguOpportunity";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { BottomNavigation } from "@/components/BottomNavigation";
+import { DestructionCountdown } from "@/components/DestructionCountdown";
+import { CustomCountdown } from "@/components/CustomCountdown";
+import { NpcUnlockPopup } from "@/components/NpcUnlockPopup";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
+import { AppThemeProvider, useAppTheme } from "@/theme/AppTheme";
+import type { AppThemeColors } from "@/theme/AppTheme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -131,7 +140,13 @@ type AlertData = {
   disparo?: number;
 };
 
-function AlertBar() {
+const ALERT_CONTENT_GAP = 2;
+
+type AlertBarProps = {
+  onOccupiedHeightChange: (height: number) => void;
+};
+
+function AlertBar({ onOccupiedHeightChange }: AlertBarProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
@@ -235,37 +250,14 @@ function AlertBar() {
 
     let cancelled = false;
 
-    /*
-     * ============================================================
-     * ALERTA SONORO
-     *
-     * O GM recebe somente o alerta visual.
-     *
-     * Jogadores recebem:
-     * - redução do volume físico para 50%
-     * - alarme sonoro
-     * ============================================================
-     */
-
     (async () => {
       try {
         const userMode = await AsyncStorage.getItem("userMode");
 
-        /*
-         * O GM não recebe áudio nem vibração.
-         */
+
         if (cancelled || userMode === "gm") {
           return;
         }
-
-        /*
-         * ========================================================
-         * VOLUME FÍSICO
-         *
-         * O volume do Android é colocado em 50%.
-         * Não restauramos o volume posteriormente.
-         * ========================================================
-         */
 
         try {
           await setDeviceVolume(0.5);
@@ -276,12 +268,6 @@ function AlertBar() {
         if (cancelled) {
           return;
         }
-
-        /*
-         * ========================================================
-         * ÁUDIO DO ALARME
-         * ========================================================
-         */
 
         await setAudioModeAsync({
           playsInSilentMode: true,
@@ -317,9 +303,7 @@ function AlertBar() {
     };
   }, [alarmActive, bloomOpacity, soundRef]);
 
-  /*
-   * Limpeza geral.
-   */
+
   useEffect(() => {
     return () => {
       const sound = soundRef.current;
@@ -331,9 +315,17 @@ function AlertBar() {
     };
   }, [soundRef]);
 
+  useEffect(() => {
+    if (!alert.ativo) {
+      onOccupiedHeightChange(0);
+    }
+  }, [alert.ativo, onOccupiedHeightChange]);
+
   if (!alert.ativo) {
     return null;
   }
+
+  const alertTop = Math.max(insets.top + 7, 14);
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 100],
@@ -400,11 +392,23 @@ function AlertBar() {
         style={[
           styles.alertOverlay,
           {
-            top: Math.max(insets.top + 7, 14),
+            top: alertTop,
           },
         ]}
       >
-        <View style={styles.alertFrame}>
+        <View
+          style={styles.alertFrame}
+          onLayout={(event) => {
+            const occupiedHeight = Math.max(
+              0,
+              alertTop +
+                event.nativeEvent.layout.height -
+                insets.top +
+                ALERT_CONTENT_GAP,
+            );
+            onOccupiedHeightChange(occupiedHeight);
+          }}
+        >
           <View style={styles.alertHeader}>
             <Text style={styles.alertLabel}>ALERTA</Text>
 
@@ -427,7 +431,40 @@ function AlertBar() {
   );
 }
 
-export default function RootLayout() {
+function RootLayoutContent() {
+  const pathname = usePathname();
+  const [alertOccupiedHeight, setAlertOccupiedHeight] = useState(0);
+  const onAlertOccupiedHeightChange = useCallback((height: number) => {
+    setAlertOccupiedHeight((previous) =>
+      Math.abs(previous - height) < 1 ? previous : height,
+    );
+  }, []);
+  const reserveAlertSpace = pathname !== "/gm" && pathname !== "/characters";
+  const { mode, colors } = useAppTheme();
+  const themeStyles = createLayoutThemeStyles(colors);
+  const paperTheme = useMemo(() => ({
+    ...(mode === "dark" ? MD3DarkTheme : MD3LightTheme),
+    colors: {
+      ...(mode === "dark" ? MD3DarkTheme.colors : MD3LightTheme.colors),
+      primary: colors.accent,
+      background: colors.background,
+      surface: colors.surface,
+      onSurface: colors.text,
+      outline: colors.border,
+    },
+  }), [mode, colors]);
+  const navigationTheme = useMemo(() => ({
+    ...(mode === "dark" ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(mode === "dark" ? DarkTheme.colors : DefaultTheme.colors),
+      primary: colors.accent,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.accent,
+    },
+  }), [mode, colors]);
   const { width: screenWidth } = useWindowDimensions();
 
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(
@@ -440,9 +477,72 @@ export default function RootLayout() {
 
   const [loadingClassChoice, setLoadingClassChoice] = useState(false);
 
-  /*
-   * Recupera o personagem atualmente selecionado.
-   */
+  const [tenguNotificationVisible, setTenguNotificationVisible] = useState(false);
+  const lastTenguEvent = useRef<number | null>(null);
+  const tenguNotificationGeneration = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const unsubscribe = onSnapshot(
+      doc(db, "game", "tenguOpportunity"),
+      (snapshot) => {
+        if (snapshot.metadata.fromCache) return;
+
+        const current = snapshot.exists()
+          ? Number(snapshot.data().disparo) || 0
+          : 0;
+
+        if (lastTenguEvent.current === null) {
+          lastTenguEvent.current = current;
+          return;
+        }
+
+        if (current <= lastTenguEvent.current) return;
+        lastTenguEvent.current = current;
+
+        const sentAt = snapshot.data()?.atualizadoEm;
+        const timestamp =
+          sentAt && typeof sentAt.toMillis === "function"
+            ? sentAt.toMillis()
+            : null;
+
+        if (!timestamp || Math.abs(Date.now() - timestamp) > 30000) return;
+
+        const generation = ++tenguNotificationGeneration.current;
+
+        void (async () => {
+          try {
+            const [selected, mode] = await Promise.all([
+              AsyncStorage.getItem("selectedCharacter"),
+              AsyncStorage.getItem("userMode"),
+            ]);
+
+            if (!active || mode !== "player" || selected?.trim().toLowerCase() !== "tengu") {
+              return;
+            }
+
+            if (!(await tenguHasOpportunityCard())) return;
+            if (!active || generation !== tenguNotificationGeneration.current) return;
+
+            setTenguNotificationVisible(true);
+          } catch (error) {
+            console.error("ERRO AO RECEBER NOTIFICAÇÃO DO TENGU:", error);
+          }
+        })();
+      },
+      (error) => {
+        console.error("ERRO AO SINCRONIZAR NOTIFICAÇÕES DO TENGU:", error);
+      },
+    );
+
+    return () => {
+      active = false;
+      tenguNotificationGeneration.current += 1;
+      unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     async function loadSelectedCharacter() {
       try {
@@ -454,18 +554,9 @@ export default function RootLayout() {
       }
     }
 
-    loadSelectedCharacter();
-  }, []);
+    void loadSelectedCharacter();
+  }, [pathname]);
 
-  /*
-   * BLOQUEIO GLOBAL DA SESSÃO
-   *
-   * O jogador é enviado para a Home quando o Mestre
-   * bloqueia a sessão.
-   *
-   * IMPORTANTE:
-   * NÃO removemos selectedCharacter.
-   */
   useEffect(() => {
     const sessionRef = doc(db, "game", "session");
 
@@ -486,18 +577,10 @@ export default function RootLayout() {
 
         const userMode = await AsyncStorage.getItem("userMode");
 
-        /*
-         * O Mestre não é afetado pelo bloqueio.
-         */
         if (userMode === "gm") {
           return;
         }
 
-        /*
-         * Jogador:
-         * volta para o menu, mas mantém
-         * o personagem selecionado.
-         */
         router.replace("/");
       },
       (error) => {
@@ -508,13 +591,50 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, []);
 
-  /*
-   * EVENTO GLOBAL DE ESCOLHA DE CLASSE
-   *
-   * Esse listener fica no RootLayout.
-   * Portanto, funciona independentemente da tela
-   * onde o jogador esteja.
-   */
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    const exitSession = async () => {
+      if (cancelled) return;
+      await AsyncStorage.multiRemove(["selectedCharacter", "userMode", "gmSessionVersion"]);
+      if (cancelled) return;
+      setSelectedCharacter(null);
+      setClassModalVisible(false);
+      router.replace("/");
+    };
+
+    void (async () => {
+      const mode = await AsyncStorage.getItem("userMode");
+      if (cancelled) return;
+      if (pathname.startsWith("/gm") && mode !== "gm") {
+        void exitSession();
+        return;
+      }
+      if (mode === "gm") {
+        const stored = await AsyncStorage.getItem("gmSessionVersion");
+        if (cancelled) return;
+        unsubscribe = onSnapshot(doc(db, "game", "session"), (snapshot) => {
+          if (snapshot.metadata.fromCache) return;
+          const current = Number(snapshot.data()?.resetVersion) || 0;
+          if (stored === null || current !== Number(stored)) void exitSession();
+        }, (error) => console.error("ERRO AO VALIDAR SESSÃO DO MESTRE:", error));
+        return;
+      }
+      if (mode !== "player" || !selectedCharacter) return;
+      const characterId = firebaseIds[selectedCharacter];
+      if (!characterId) return;
+      unsubscribe = onSnapshot(doc(db, "characters", characterId), (snapshot) => {
+        if (snapshot.metadata.fromCache) return;
+        if (!snapshot.exists() || snapshot.data().ativo !== true) void exitSession();
+      }, (error) => console.error("ERRO AO VALIDAR PERSONAGEM ATIVO:", error));
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [pathname, selectedCharacter]);
+
   useEffect(() => {
     if (!selectedCharacter) {
       setClassModalVisible(false);
@@ -540,9 +660,6 @@ export default function RootLayout() {
         return;
       }
 
-      /*
-       * O evento é exclusivo para jogadores.
-       */
       if (userMode === "gm") {
         setClassModalVisible(false);
         return;
@@ -563,21 +680,11 @@ export default function RootLayout() {
 
           const classeAtual = data.classe ?? null;
 
-          /*
-           * Só abre se:
-           *
-           * 1. GM liberou o evento
-           * 2. personagem ainda não possui classe
-           */
           if (eventoLiberado && !classeAtual) {
             setClassModalVisible(true);
             return;
           }
 
-          /*
-           * Se o jogador já escolheu ou o GM bloqueou
-           * o evento, o modal desaparece.
-           */
           setClassModalVisible(false);
           setSelectedClass(null);
         },
@@ -598,9 +705,6 @@ export default function RootLayout() {
     };
   }, [selectedCharacter]);
 
-  /*
-   * Escolha da classe.
-   */
   async function chooseClass(classData: ClassData) {
     if (!selectedCharacter || loadingClassChoice) {
       return;
@@ -618,10 +722,6 @@ export default function RootLayout() {
 
       const characterRef = doc(db, "characters", characterId);
 
-      /*
-       * Aplica os bônus diretamente aos atributos
-       * existentes do personagem.
-       */
       const updates: Record<string, any> = {
         classe: classData.id,
         eventoClasseLiberado: false,
@@ -687,23 +787,31 @@ export default function RootLayout() {
 
   const classList = useMemo(() => classes, []);
 
-  /*
-   * A largura de cada página do carrossel é exatamente
-   * a largura interna disponível do modal.
-   */
   const modalWidth = Math.min(screenWidth - 36, 520);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <PaperProvider>
-          <View style={styles.container}>
-            <View style={styles.stack}>
+    <ThemeProvider value={navigationTheme}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <PaperProvider theme={paperTheme}>
+            <StatusBar
+              barStyle={mode === "dark" ? "light-content" : "dark-content"}
+              backgroundColor={colors.background}
+            />
+            <View style={[styles.container, themeStyles.container]}>
+            <View
+              style={[
+                styles.stack,
+                reserveAlertSpace && alertOccupiedHeight > 0
+                  ? { paddingTop: alertOccupiedHeight }
+                  : null,
+              ]}
+            >
               <Stack
                 screenOptions={{
                   headerShown: false,
                   contentStyle: {
-                    backgroundColor: "#000000",
+                    backgroundColor: colors.background,
                   },
                 }}
               />
@@ -714,26 +822,38 @@ export default function RootLayout() {
 
           <AnimatedSplashOverlay />
 
-          <AlertBar />
+          <AlertBar onOccupiedHeightChange={onAlertOccupiedHeightChange} />
+
+          <DestructionCountdown />
+          <CustomCountdown />
+
+          <Snackbar
+            visible={tenguNotificationVisible}
+            onDismiss={() => setTenguNotificationVisible(false)}
+            duration={4500}
+            style={styles.tenguNotification}
+            wrapperStyle={styles.tenguNotificationWrapper}
+            elevation={0}
+          >
+            <Text style={styles.tenguNotificationMessage}>
+              <Ionicons name="eye-outline" size={19} color="#e9bfc0" />
+              {"  "}Um inimigo próximo está com menos de 25% de vida.
+            </Text>
+          </Snackbar>
 
           <Modal
             visible={classModalVisible}
             transparent
             animationType="fade"
-            onRequestClose={() => {
-              /*
-               * Não permitimos fechar o evento pelo botão
-               * de voltar. O jogador precisa escolher.
-               */
-            }}
+            onRequestClose={() => {}}
           >
-            <View style={styles.classModalOverlay}>
-              <View style={styles.classModal}>
-                <Text style={styles.classEventLabel}>EVENTO DESBLOQUEADO</Text>
+            <View style={[styles.classModalOverlay, themeStyles.classModalOverlay]}>
+              <View style={[styles.classModal, themeStyles.classModal]}>
+                <Text style={[styles.classEventLabel, themeStyles.classEventLabel]}>EVENTO DESBLOQUEADO</Text>
 
-                <Text style={styles.classTitle}>ESCOLHA SUA CLASSE</Text>
+                <Text style={[styles.classTitle, themeStyles.classTitle]}>ESCOLHA SUA CLASSE</Text>
 
-                <Text style={styles.classSubtitle}>
+                <Text style={[styles.classSubtitle, themeStyles.classSubtitle]}>
                   Suas memórias começam a retornar.
                   {"\n"}
                   Escolha aquilo que você era antes de tudo isso.
@@ -760,26 +880,26 @@ export default function RootLayout() {
                         },
                       ]}
                     >
-                      <View style={styles.classCard}>
-                        <View style={styles.classSymbol}>
-                          <Text style={styles.classSymbolText}>
+                      <View style={[styles.classCard, themeStyles.classCard]}>
+                        <View style={[styles.classSymbol, themeStyles.classSymbol]}>
+                          <Text style={[styles.classSymbolText, themeStyles.classSymbolText]}>
                             {classData.simbolo}
                           </Text>
                         </View>
 
-                        <Text style={styles.className}>
+                        <Text style={[styles.className, themeStyles.className]}>
                           {classData.id.toUpperCase()}
                         </Text>
 
-                        <Text style={styles.classDescription}>
+                        <Text style={[styles.classDescription, themeStyles.classDescription]}>
                           {classData.descricao}
                         </Text>
 
-                        <View style={styles.effectsBox}>
-                          <Text style={styles.effectsTitle}>EFEITOS</Text>
+                        <View style={[styles.effectsBox, themeStyles.effectsBox]}>
+                          <Text style={[styles.effectsTitle, themeStyles.effectsTitle]}>EFEITOS</Text>
 
                           {classData.efeitos.map((efeito) => (
-                            <Text key={efeito} style={styles.effect}>
+                            <Text key={efeito} style={[styles.effect, themeStyles.effect]}>
                               {efeito}
                             </Text>
                           ))}
@@ -787,13 +907,13 @@ export default function RootLayout() {
 
                         <Pressable
                           style={[
-                            styles.chooseButton,
+                            styles.chooseButton, themeStyles.chooseButton,
                             loadingClassChoice && styles.chooseButtonDisabled,
                           ]}
                           disabled={loadingClassChoice}
                           onPress={() => chooseClass(classData)}
                         >
-                          <Text style={styles.chooseButtonText}>
+                          <Text style={[styles.chooseButtonText, themeStyles.chooseButtonText]}>
                             {loadingClassChoice &&
                             selectedClass?.id === classData.id
                               ? "CONFIRMANDO..."
@@ -807,13 +927,63 @@ export default function RootLayout() {
               </View>
             </View>
           </Modal>
-        </PaperProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+
+          <NpcUnlockPopup />
+          </PaperProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }
 
+export default function RootLayout() {
+  return (
+    <AppThemeProvider>
+      <RootLayoutContent />
+    </AppThemeProvider>
+  );
+}
+
+function createLayoutThemeStyles(colors: AppThemeColors) {
+  return StyleSheet.create({
+    container: { backgroundColor: colors.background },
+    classModalOverlay: { backgroundColor: colors.overlay },
+    classModal: { backgroundColor: colors.surface, borderColor: colors.border },
+    classEventLabel: { color: colors.accent },
+    classTitle: { color: colors.text },
+    classSubtitle: { color: colors.textMuted },
+    classCard: { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+    classSymbol: { backgroundColor: colors.surfaceRaised, borderColor: colors.borderStrong },
+    classSymbolText: { color: colors.text },
+    className: { color: colors.text },
+    classDescription: { color: colors.textMuted },
+    effectsBox: { backgroundColor: colors.surfaceRaised, borderColor: colors.border },
+    effectsTitle: { color: colors.textFaint },
+    effect: { color: colors.text },
+    chooseButton: { backgroundColor: colors.text },
+    chooseButtonText: { color: colors.background },
+  });
+}
+
 const styles = StyleSheet.create({
+  tenguNotification: {
+    backgroundColor: "#1a1111",
+    borderColor: "#704040",
+    borderWidth: 1,
+    borderRadius: 7,
+    minHeight: 56,
+  },
+  tenguNotificationMessage: {
+    color: "#f3e7e7",
+    fontSize: 13,
+    lineHeight: 21,
+    fontWeight: "400",
+  },
+  tenguNotificationWrapper: {
+    bottom: 90,
+    zIndex: 3000,
+    elevation: 3000,
+  },
   container: {
     flex: 1,
     backgroundColor: "#000000",

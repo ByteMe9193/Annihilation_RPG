@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useThemedStyles } from "@/theme/useThemedStyles";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Image,
@@ -20,6 +21,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { Asset } from "expo-asset";
 
+import { useAudioPlayer } from "expo-audio";
+
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -27,7 +30,7 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, runTransaction } from "firebase/firestore";
 
 import { db } from "@/services/firebase/config";
 
@@ -93,19 +96,9 @@ const characters = [
   },
 ];
 
-/*
-
- * Repetimos os personagens várias vezes
-
- * para criar o efeito de carrossel infinito.
-
- */
-
-const carouselCharacters = Array.from({ length: 7 }, () => characters).flat();
-
-const INITIAL_INDEX = characters.length * 3;
-
 function CharacterImage({ source }: { source: any }) {
+  const styles = useThemedStyles(baseStyles);
+
   const [uri, setUri] = useState<string | null>(null);
 
   useEffect(() => {
@@ -183,17 +176,13 @@ function CharacterCard({
 
   onFlipComplete: () => void;
 }) {
+  const styles = useThemedStyles(baseStyles);
+
   const rotation = useSharedValue(0);
 
   const opacity = useSharedValue(1);
 
   const [showFront, setShowFront] = useState(false);
-
-  /*
-
-   * Reseta a carta quando o sistema é reiniciado.
-
-   */
 
   useEffect(() => {
     rotation.value = 0;
@@ -202,12 +191,6 @@ function CharacterCard({
 
     setShowFront(false);
   }, [resetSignal]);
-
-  /*
-
-   * A carta só gira depois da confirmação.
-
-   */
 
   useEffect(() => {
     if (!shouldFlip || !front) {
@@ -281,6 +264,17 @@ function CharacterCard({
 }
 
 export default function CharacterSelection() {
+  const styles = useThemedStyles(baseStyles);
+
+  const cardFlipPlayer = useAudioPlayer(require("@/assets/sfx/card flip.mp3"));
+
+  const playCardFlip = () => {
+
+    void cardFlipPlayer.seekTo(0)
+      .then(() => cardFlipPlayer.play())
+      .catch((error) => console.error("ERRO NO SOM DE GIRO DA CARTA:", error));
+  };
+
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(
     null,
   );
@@ -297,14 +291,61 @@ export default function CharacterSelection() {
     null,
   );
   const [loadingDifficulty, setLoadingDifficulty] = useState(false);
+  const [activeIds, setActiveIds] = useState<string[]>([]);
+  const [availabilityLoaded, setAvailabilityLoaded] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState(false);
+  const [selectionBusy, setSelectionBusy] = useState(false);
+  const [selectionError, setSelectionError] = useState("");
+  const [reservingId, setReservingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, "characters"),
+      (snapshot) => {
+        const nextIds = snapshot.docs
+          .filter((item) => item.data().ativo === true)
+          .map((item) => item.id)
+          .sort();
+        setActiveIds((previous) =>
+          previous.length === nextIds.length && previous.every((id, index) => id === nextIds[index])
+            ? previous
+            : nextIds,
+        );
+        setAvailabilityError(false);
+        setAvailabilityLoaded(true);
+      },
+      (error) => {
+        console.error("Erro ao sincronizar personagens ativos:", error);
+        setAvailabilityError(true);
+        setAvailabilityLoaded(true);
+      },
+    );
+  }, []);
+
+  const availableCharacters = useMemo(
+    () => characters.filter((character) =>
+      !activeIds.includes(character.id) ||
+      character.id === reservingId ||
+      character.id === confirmedCharacterId,
+    ),
+    [activeIds, reservingId, confirmedCharacterId],
+  );
+  const carouselCharacters = useMemo(
+    () => Array.from({ length: 7 }, () => availableCharacters).flat(),
+    [availableCharacters],
+  );
+  const initialIndex = availableCharacters.length * 3;
+  const carouselKey = availableCharacters.map((item) => item.id).join("-");
+  const pendingAlreadyActive = pendingCharacter !== null && activeIds.includes(pendingCharacter.id);
+
 
   const difficultyColors: Record<string, string> = {
     Facil: "#4CAF50",
     Fácil: "#4CAF50",
     Media: "#E0B341",
     Média: "#E0B341",
-    "Media-Dificil": "#F28C38",
-    "Média-Difícil": "#F28C38",
+    "Media - Dificil": "#F28C38",
+    "Média - Difícil": "#F28C38",
     Dificil: "#D94343",
     Difícil: "#D94343",
   };
@@ -312,14 +353,6 @@ export default function CharacterSelection() {
   const [resetSignal, setResetSignal] = useState(0);
 
   const flatListRef = useRef<FlatList>(null);
-
-  /*
-
-   * Verifica se já existe personagem
-
-   * selecionado neste dispositivo.
-
-   */
 
   useFocusEffect(
     useCallback(() => {
@@ -346,21 +379,6 @@ export default function CharacterSelection() {
 
         setResetSignal((current) => current + 1);
 
-        /*
-
-         * Volta para o bloco central
-
-         * do carrossel.
-
-         */
-
-        setTimeout(() => {
-          flatListRef.current?.scrollToIndex({
-            index: INITIAL_INDEX,
-
-            animated: false,
-          });
-        }, 50);
       }
 
       checkSelectedCharacter();
@@ -371,169 +389,105 @@ export default function CharacterSelection() {
     }, []),
   );
 
-  /*
-
-   * Mantém o carrossel aparentemente infinito.
-
-   *
-
-   * Quando chegamos perto das extremidades,
-
-   * reposicionamos para o mesmo personagem
-
-   * no bloco central sem animação.
-
-   */
-
   const handleMomentumEnd = (event: any) => {
-    const offsetX = event.nativeEvent.contentOffset.x;
+    const count = availableCharacters.length;
+    if (count === 0) return;
 
-    const rawIndex = Math.round(offsetX / SNAP_INTERVAL);
-
-    const characterIndex =
-      ((rawIndex % characters.length) + characters.length) % characters.length;
-
-    if (rawIndex < characters.length || rawIndex >= characters.length * 6) {
-      const normalizedIndex = INITIAL_INDEX + characterIndex;
-
+    const rawIndex = Math.round(event.nativeEvent.contentOffset.x / SNAP_INTERVAL);
+    const characterIndex = ((rawIndex % count) + count) % count;
+    if (rawIndex < count || rawIndex >= count * 6) {
       flatListRef.current?.scrollToIndex({
-        index: normalizedIndex,
-
-        animated: true,
+        index: initialIndex + characterIndex,
+        animated: false,
       });
     }
   };
 
-  /*
-
-   * Primeiro toque:
-
-   * apenas abre a confirmação.
-
-   */
-
-  const handleCardPress = async (character: (typeof characters)[number]) => {
-    if (selectedCharacter || loadingDifficulty) return;
-
+  const handleCardPress = (character: (typeof characters)[number]) => {
+    if (selectedCharacter || loadingDifficulty || selectionBusy ||
+      !availabilityLoaded || availabilityError || activeIds.includes(character.id)) return;
+    setSelectionError("");
     setPendingCharacter(character);
     setPendingDifficulty(null);
     setLoadingDifficulty(true);
-
-    try {
-      const characterRef = doc(db, "characters", character.id);
-      const characterSnapshot = await getDoc(characterRef);
-
-      if (characterSnapshot.exists()) {
-        const data = characterSnapshot.data();
-        setPendingDifficulty(data.dificuldade ?? null);
-      } else {
-        console.warn(`Documento do personagem não encontrado: ${character.id}`);
-      }
-    } catch (error) {
-      console.error("ERRO AO BUSCAR DIFICULDADE DO PERSONAGEM:", error);
-    } finally {
-      setLoadingDifficulty(false);
-    }
   };
 
-  /*
+  useEffect(() => {
+    if (!pendingCharacter) return;
 
-   * Confirmação definitiva.
+    const unsubscribe = onSnapshot(
+      doc(db, "characters", pendingCharacter.id),
+      (snapshot) => {
+        setPendingDifficulty(snapshot.exists() ? snapshot.data().dificuldade ?? null : null);
+        setLoadingDifficulty(false);
+      },
+      (error) => {
+        console.error("Erro ao sincronizar dificuldade do personagem:", error);
+        setLoadingDifficulty(false);
+      },
+    );
 
-   *
-
-   * Somente aqui:
-
-   * - salva no AsyncStorage
-
-   * - ativa no Firestore
-
-   * - libera o flip
-
-   */
+    return unsubscribe;
+  }, [pendingCharacter?.id]);
 
   const confirmSelection = async () => {
-    if (!pendingCharacter) {
+    if (!pendingCharacter || selectionBusy || loadingDifficulty ||
+      !availabilityLoaded || availabilityError) return;
+
+    const character = pendingCharacter;
+    if (activeIds.includes(character.id)) {
+      setSelectionError("Este personagem já foi escolhido por outro jogador.");
       return;
     }
 
-    const character = pendingCharacter;
+    setSelectionError("");
+    setSelectionBusy(true);
+    setReservingId(character.id);
 
     try {
-      setSelectedCharacter(character.name);
+      await runTransaction(db, async (transaction) => {
+        const characterRef = doc(db, "characters", character.id);
+        const snapshot = await transaction.get(characterRef);
 
-      setPendingCharacter(null);
+        if (!snapshot.exists()) throw new Error("CHARACTER_NOT_FOUND");
+        if (snapshot.data().ativo === true) throw new Error("CHARACTER_ALREADY_ACTIVE");
 
-      /*
-
-       * Salva o personagem selecionado
-
-       * neste dispositivo.
-
-       */
-
-      await AsyncStorage.setItem("selectedCharacter", character.name);
-
-      /*
-
-       * Marca o personagem como ativo
-
-       * na sessão.
-
-       */
-
-      await updateDoc(doc(db, "characters", character.id), {
-        ativo: true,
+        transaction.update(characterRef, { ativo: true });
       });
 
-      console.log(`🟢 PERSONAGEM ATIVADO: ${character.name} (${character.id})`);
-
-      /*
-
-       * Agora a carta pode girar.
-
-       */
-
+      await AsyncStorage.setItem("selectedCharacter", character.name);
+      setSelectedCharacter(character.name);
+      setPendingCharacter(null);
       setConfirmedCharacterId(character.id);
-
-      /*
-
-       * Aguarda a animação antes
-
-       * de entrar no Reveal.
-
-       */
+      playCardFlip();
 
       setTimeout(() => {
         router.replace({
           pathname: "/characters/reveal",
-
-          params: {
-            character: character.name,
-          },
+          params: { character: character.name },
         });
       }, 2200);
     } catch (error) {
-      console.error("❌ ERRO AO ATIVAR PERSONAGEM:", error);
-
-      /*
-
-       * Se houver erro, desfaz
-
-       * a seleção local.
-
-       */
-
+      console.error("Erro ao selecionar personagem:", error);
+      const alreadyActive = error instanceof Error && error.message === "CHARACTER_ALREADY_ACTIVE";
+      const missing = error instanceof Error && error.message === "CHARACTER_NOT_FOUND";
+      setSelectionError(alreadyActive
+        ? "Este personagem já foi escolhido por outro jogador."
+        : missing
+          ? "Personagem não encontrado no Firebase."
+          : "Não foi possível confirmar a escolha. Verifique sua conexão e tente novamente.");
       setSelectedCharacter(null);
-
       setConfirmedCharacterId(null);
-
-      await AsyncStorage.removeItem("selectedCharacter");
+      setReservingId(null);
+    } finally {
+      setSelectionBusy(false);
     }
   };
 
   const cancelSelection = () => {
+    if (selectionBusy) return;
     setPendingCharacter(null);
+    setSelectionError("");
   };
 
   return (
@@ -542,47 +496,31 @@ export default function CharacterSelection() {
 
       <Text style={styles.subtitle}>Escolha seu personagem</Text>
 
+      {!availabilityLoaded ? (
+        <Text style={styles.availabilityMessage}>VERIFICANDO PERSONAGENS...</Text>
+      ) : availabilityError ? (
+        <Text style={styles.availabilityMessage}>
+          NÃO FOI POSSÍVEL CONSULTAR OS PERSONAGENS. VERIFIQUE SUA CONEXÃO.
+        </Text>
+      ) : availableCharacters.length === 0 ? (
+        <Text style={styles.availabilityMessage}>TODOS OS PERSONAGENS ESTÃO EM USO.</Text>
+      ) : (
       <FlatList
+        key={carouselKey}
         ref={flatListRef}
         data={carouselCharacters}
         horizontal
         keyExtractor={(_, index) => `character-${index}`}
         showsHorizontalScrollIndicator={false}
-        /*
-
-         * Cada carta ocupa exatamente
-
-         * este intervalo.
-
-         */
 
         snapToInterval={SNAP_INTERVAL}
-        /*
-
-         * O snap fica centralizado
-
-         * na tela.
-
-         */
 
         snapToAlignment="center"
-        /*
-
-         * Deslizamento mais suave.
-
-         */
 
         decelerationRate="normal"
-        /*
-
-         * Permite que o usuário tenha
-
-         * mais liberdade no arraste.
-
-         */
 
         disableIntervalMomentum={false}
-        initialScrollIndex={INITIAL_INDEX}
+        initialScrollIndex={initialIndex}
         getItemLayout={(_, index) => ({
           length: SNAP_INTERVAL,
 
@@ -596,7 +534,7 @@ export default function CharacterSelection() {
           <View style={styles.item}>
             <Pressable
               onPress={() => handleCardPress(item)}
-              disabled={selectedCharacter !== null}
+              disabled={selectedCharacter !== null || selectionBusy}
             >
               <CharacterCard
                 back={item.back}
@@ -610,14 +548,11 @@ export default function CharacterSelection() {
           </View>
         )}
       />
+      )}
 
-      <Text style={styles.hint}>ARRASTE PARA O LADO</Text>
-
-      {/* ========================= */}
-
-      {/* CONFIRMAÇÃO DE PERSONAGEM */}
-
-      {/* ========================= */}
+      {availabilityLoaded && !availabilityError && availableCharacters.length > 0 && (
+        <Text style={styles.hint}>ARRASTE PARA O LADO</Text>
+      )}
 
       <Modal
         visible={pendingCharacter !== null}
@@ -664,9 +599,15 @@ export default function CharacterSelection() {
               )}
             </View>
 
-            <Text style={styles.warningText}>
-              ESSA ESCOLHA NÃO PODERÁ SER DESFEITA.
-            </Text>
+            {pendingAlreadyActive || selectionError ? (
+              <Text style={styles.selectionError}>
+                {selectionError || "Este personagem já foi escolhido por outro jogador."}
+              </Text>
+            ) : (
+              <Text style={styles.warningText}>
+                ESSA ESCOLHA NÃO PODERÁ SER DESFEITA.
+              </Text>
+            )}
 
             <View style={styles.modalButtons}>
               <Pressable
@@ -679,9 +620,9 @@ export default function CharacterSelection() {
               <Pressable
                 style={[styles.modalButton, styles.confirmButton]}
                 onPress={confirmSelection}
-                disabled={loadingDifficulty}
+                disabled={loadingDifficulty || selectionBusy || pendingAlreadyActive}
               >
-                <Text style={styles.confirmButtonText}>CONFIRMAR ESCOLHA</Text>
+                <Text style={styles.confirmButtonText}>{selectionBusy ? "CONFIRMANDO..." : "CONFIRMAR ESCOLHA"}</Text>
               </Pressable>
             </View>
           </View>
@@ -691,7 +632,23 @@ export default function CharacterSelection() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
+  availabilityMessage: {
+    flex: 1,
+    color: "#999",
+    fontSize: 11,
+    textAlign: "center",
+    textAlignVertical: "center",
+    letterSpacing: 1.2,
+    marginHorizontal: 35,
+  },
+  selectionError: {
+    color: "#c85c5c",
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 18,
+  },
   container: {
     flex: 1,
 
@@ -726,35 +683,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  /*
-
-   * Sem padding lateral.
-
-   *
-
-   * O próprio item possui a largura
-
-   * necessária para o snap central.
-
-   */
-
   carousel: {
     alignItems: "center",
   },
-
-  /*
-
-   * Cada item é um intervalo completo.
-
-   *
-
-   * A carta ocupa 80% da tela e o
-
-   * espaço restante cria a pequena
-
-   * abertura para as cartas vizinhas.
-
-   */
 
   item: {
     width: SNAP_INTERVAL,
@@ -801,16 +732,6 @@ const styles = StyleSheet.create({
 
     marginBottom: 25,
   },
-
-  /*
-
-   * =========================
-
-   * MODAL
-
-   * =========================
-
-   */
 
   modalOverlay: {
     flex: 1,

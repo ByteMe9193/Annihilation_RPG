@@ -1,3 +1,5 @@
+import { useAppTheme } from "@/theme/AppTheme";
+import { useThemedStyles } from "@/theme/useThemedStyles";
 import React, {
   useCallback,
   useEffect,
@@ -13,6 +15,7 @@ import {
   Keyboard,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,23 +28,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
   onSnapshot,
   serverTimestamp,
+  runTransaction,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
 
 import { db } from "@/services/firebase/config";
-
-/* =========================================================
-   TIPOS
-========================================================= */
 
 type InventoryCategory =
   | "acessorio"
@@ -69,10 +67,6 @@ type InventoryItem = {
   categoriaAutomatica: InventoryCategory;
   quantidade: number;
 };
-
-/* =========================================================
-   ÍCONES
-========================================================= */
 
 const inventoryCategories: Record<
   InventoryCategory,
@@ -498,10 +492,6 @@ const inventoryCategories: Record<
   },
 };
 
-/* =========================================================
-   ORDEM DOS ÍCONES
-========================================================= */
-
 const categoryOrder: InventoryCategory[] = [
   "acessorio",
   "arma",
@@ -522,10 +512,6 @@ const categoryOrder: InventoryCategory[] = [
   "roupa",
 ];
 
-/* =========================================================
-   NORMALIZAÇÃO
-========================================================= */
-
 function normalizeWord(word: string): string {
   return word
     .normalize("NFD")
@@ -533,10 +519,6 @@ function normalizeWord(word: string): string {
     .toLowerCase()
     .trim();
 }
-
-/* =========================================================
-   CLASSIFICAÇÃO AUTOMÁTICA
-========================================================= */
 
 function getInventoryCategory(
   itemName: string
@@ -562,11 +544,10 @@ function getInventoryCategory(
   return "diversos";
 }
 
-/* =========================================================
-   COMPONENTE
-========================================================= */
-
 export default function InventoryScreen() {
+  const styles = useThemedStyles(baseStyles);
+  const { colors } = useAppTheme();
+
   const [character, setCharacter] = useState<string | null>(
     null
   );
@@ -596,11 +577,10 @@ export default function InventoryScreen() {
     useState<InventoryItem | null>(null);
 
   const [activeCharacters, setActiveCharacters] = useState<
-    { id: string; nome: string }[]
+    { id: string; nome: string; raca: string }[]
   >([]);
 
-  const [destinationCharacter, setDestinationCharacter] =
-    useState<{ id: string; nome: string } | null>(null);
+  const [destinationCharacterIds, setDestinationCharacterIds] = useState<string[]>([]);
   const [transferQuantity, setTransferQuantity] = useState("1");
 
   const [saving, setSaving] = useState(false);
@@ -619,10 +599,6 @@ export default function InventoryScreen() {
     useState<ReceivedNotification | null>(null);
 
   const seenNotificationIds = useRef<Set<string>>(new Set());
-
-  /* =======================================================
-     CARREGAR PERSONAGEM
-  ======================================================= */
 
   useFocusEffect(
     useCallback(() => {
@@ -646,10 +622,6 @@ export default function InventoryScreen() {
       };
     }, [])
   );
-
-  /* =======================================================
-     FIRESTORE
-  ======================================================= */
 
   useEffect(() => {
     if (!character) {
@@ -712,10 +684,6 @@ export default function InventoryScreen() {
 
     return unsubscribe;
   }, [character]);
-
-  /* =======================================================
-     NOTIFICAÇÕES DE ITENS RECEBIDOS
-  ======================================================= */
 
   useEffect(() => {
     if (!character) {
@@ -858,10 +826,6 @@ export default function InventoryScreen() {
     return () => clearTimeout(timer);
   }, [activeNotification, character]);
 
-  /* =======================================================
-     ADICIONAR ITEM
-  ======================================================= */
-
   async function addItem() {
     const itemName = newItem.trim();
 
@@ -896,8 +860,6 @@ export default function InventoryScreen() {
 
       const quantity = Math.max(1, parseInt(newItemQuantity, 10) || 1);
 
-      // Se o item já existe no inventário, acumula a quantidade
-      // em vez de criar várias linhas iguais.
       const inventorySnapshot = await getDocs(
         collection(
           db,
@@ -969,10 +931,6 @@ export default function InventoryScreen() {
     }
   }
 
-  /* =======================================================
-     ALTERAR CATEGORIA
-  ======================================================= */
-
   async function changeCategory(
     category: InventoryCategory
   ) {
@@ -1028,10 +986,6 @@ export default function InventoryScreen() {
       );
     }
   }
-
-  /* =======================================================
-     EXCLUIR ITEM
-  ======================================================= */
 
   function removeItem(item: InventoryItem) {
     if (!character) {
@@ -1107,10 +1061,6 @@ export default function InventoryScreen() {
     }
   }
 
-  /* =======================================================
-     TRANSFERIR ITEM
-  ======================================================= */
-
   async function loadActiveCharacters() {
     try {
       const charactersRef = collection(db, "characters");
@@ -1126,7 +1076,8 @@ export default function InventoryScreen() {
 
           return {
             id: characterDoc.id,
-            nome: data.nome || characterDoc.id,
+            nome: String(data.nome || characterDoc.id),
+            raca: String(data.raca || "RAÇA NÃO INFORMADA"),
           };
         });
 
@@ -1142,7 +1093,7 @@ export default function InventoryScreen() {
 
   async function openTransferModal(item: InventoryItem) {
     setItemToTransfer(item);
-    setDestinationCharacter(null);
+    setDestinationCharacterIds([]);
     setTransferQuantity("1");
     setTransferModalVisible(true);
     await loadActiveCharacters();
@@ -1155,77 +1106,12 @@ export default function InventoryScreen() {
 
     setTransferModalVisible(false);
     setItemToTransfer(null);
-    setDestinationCharacter(null);
+    setDestinationCharacterIds([]);
     setTransferQuantity("1");
   }
 
-  async function verifyInventories(
-    originId: string,
-    destinationId: string
-  ) {
-    try {
-      const originRef = collection(
-        db,
-        "characters",
-        originId,
-        "inventory"
-      );
-
-      const destinationRef = collection(
-        db,
-        "characters",
-        destinationId,
-        "inventory"
-      );
-
-      const [originSnapshot, destinationSnapshot] =
-        await Promise.all([
-          getDocs(originRef),
-          getDocs(destinationRef),
-        ]);
-
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      console.log("🔍 VERIFICAÇÃO APÓS TRANSFERÊNCIA");
-      console.log(`📤 INVENTÁRIO DE ORIGEM: ${originId}`);
-      console.log(`📦 ${originSnapshot.size} ITEM(NS)`);
-
-      originSnapshot.docs.forEach((inventoryItem) => {
-        const data = inventoryItem.data();
-        console.log("  └─", {
-          id: inventoryItem.id,
-          nome: data.nome,
-          categoria: data.categoria,
-        });
-      });
-
-      console.log(`📥 INVENTÁRIO DE DESTINO: ${destinationId}`);
-      console.log(`📦 ${destinationSnapshot.size} ITEM(NS)`);
-
-      destinationSnapshot.docs.forEach((inventoryItem) => {
-        const data = inventoryItem.data();
-        console.log("  └─", {
-          id: inventoryItem.id,
-          nome: data.nome,
-          categoria: data.categoria,
-        });
-      });
-
-      console.log("✅ VERIFICAÇÃO CONCLUÍDA");
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    } catch (error) {
-      console.error(
-        "❌ ERRO NA VERIFICAÇÃO DOS INVENTÁRIOS:",
-        error
-      );
-    }
-  }
-
-  async function transferItem(
-    destinationId: string
-  ) {
-    if (!character || !itemToTransfer || saving) {
-      return;
-    }
+  async function transferItem() {
+    if (!character || !itemToTransfer || saving || destinationCharacterIds.length === 0) return;
 
     const characterIdMap: Record<string, string> = {
       Ciborgue: "cyborg",
@@ -1234,181 +1120,99 @@ export default function InventoryScreen() {
       Tiefling: "tiefling",
       Draconata: "dragonborn",
     };
-
     const originId = characterIdMap[character];
+    if (!originId) return;
 
-    if (!originId || !destinationId || originId === destinationId) {
+    const targets = activeCharacters.filter((target) =>
+      destinationCharacterIds.includes(target.id) && target.id !== originId,
+    );
+    if (targets.length === 0) return;
+
+    const perRecipient = Number(transferQuantity);
+    const total = perRecipient * targets.length;
+    const available = Number(itemToTransfer.quantidade) || 0;
+    if (!Number.isSafeInteger(perRecipient) || perRecipient <= 0 || total > available) {
+      Alert.alert("Quantidade inválida", `Cada destino recebe a mesma quantidade. Necessário: ${total} un.; disponível: ${available} un.`);
       return;
     }
 
     try {
       setSaving(true);
-
-      console.log("🔄 INICIANDO TRANSFERÊNCIA");
-      console.log("📦 ITEM:", itemToTransfer.nome);
-      console.log("📤 ORIGEM:", originId);
-      console.log("📥 DESTINO:", destinationId);
-
-      const quantityToTransfer = Math.max(
-        1,
-        parseInt(transferQuantity, 10) || 1
-      );
-
-      const originQuantity = Math.max(
-        1,
-        Number(itemToTransfer.quantidade) || 1
-      );
-
-      if (quantityToTransfer > originQuantity) {
-        Alert.alert(
-          "Quantidade inválida",
-          `Você possui apenas ${originQuantity} unidade(s) deste item.`
-        );
-        return;
-      }
-
-      // Procura o mesmo item/categoria no inventário de destino.
-      const destinationInventoryRef = collection(
-        db,
-        "characters",
-        destinationId,
-        "inventory"
-      );
-
-      const destinationSnapshot = await getDocs(
-        destinationInventoryRef
-      );
-
-      const existingDestinationDoc =
-        destinationSnapshot.docs.find((inventoryDoc) => {
-          const data = inventoryDoc.data();
-          return (
-            String(data.nome ?? "").trim().toLowerCase() ===
-              itemToTransfer.nome.trim().toLowerCase() &&
-            (data.categoria ?? "diversos") ===
-              itemToTransfer.categoria
-          );
+      const originRef = doc(db, "characters", originId, "inventory", itemToTransfer.id);
+      const targetInventory = await Promise.all(targets.map(async (target) => {
+        const inventoryRef = collection(db, "characters", target.id, "inventory");
+        const snapshot = await getDocs(inventoryRef);
+        const matched = snapshot.docs.find((entry) => {
+          const data = entry.data();
+          return String(data.nome ?? "").trim().toLowerCase() === itemToTransfer.nome.trim().toLowerCase()
+            && (data.categoria ?? "diversos") === itemToTransfer.categoria;
         });
+        return {
+          target,
+          itemRef: matched?.ref ?? doc(inventoryRef),
+          notificationRef: doc(collection(db, "characters", target.id, "notifications")),
+        };
+      }));
 
-      if (existingDestinationDoc) {
-        const destinationQuantity = Math.max(
-          1,
-          Number(existingDestinationDoc.data().quantidade) || 1
-        );
-
-        await setDoc(
-          existingDestinationDoc.ref,
-          {
-            quantidade: destinationQuantity + quantityToTransfer,
-          },
-          { merge: true }
-        );
-      } else {
-        const destinationItemRef = doc(destinationInventoryRef);
-
-        await setDoc(destinationItemRef, {
-          id: destinationItemRef.id,
-          nome: itemToTransfer.nome,
-          categoria: itemToTransfer.categoria,
-          categoriaAutomatica:
-            itemToTransfer.categoriaAutomatica,
-          quantidade: quantityToTransfer,
-        });
-      }
-
-      const originRef = doc(
-        db,
-        "characters",
-        originId,
-        "inventory",
-        itemToTransfer.id
-      );
-
-      if (quantityToTransfer >= originQuantity) {
-        await deleteDoc(originRef);
-      } else {
-        await setDoc(
-          originRef,
-          {
-            quantidade: originQuantity - quantityToTransfer,
-          },
-          { merge: true }
-        );
-      }
-
-      console.log("✅ QUANTIDADE REMOVIDA DA ORIGEM");
-
-      /*
-       * A transferência também cria uma notificação persistente
-       * no personagem destino. O onSnapshot do Inventário vai
-       * exibi-la imediatamente se ele estiver com a tela aberta.
-       */
-      let senderName = character;
-
-      try {
-        const originCharacterSnapshot = await getDoc(
-          doc(db, "characters", originId)
-        );
-
-        if (originCharacterSnapshot.exists()) {
-          senderName =
-            String(
-              originCharacterSnapshot.data().nome ?? ""
-            ).trim() || character;
+      await runTransaction(db, async (transaction) => {
+        const sender = await transaction.get(doc(db, "characters", originId));
+        const origin = await transaction.get(originRef);
+        const currentQuantity = Number(origin.data()?.quantidade) || 0;
+        if (!origin.exists() || currentQuantity < total) {
+          throw new Error("Quantidade insuficiente no inventário de origem.");
         }
-      } catch (error) {
-        console.error(
-          "ERRO AO BUSCAR NOME DO REMETENTE:",
-          error
-        );
-      }
 
-      const notificationsRef = collection(
-        db,
-        "characters",
-        destinationId,
-        "notifications"
-      );
+        const destinationStates = await Promise.all(targetInventory.map(async (entry) => ({
+          ...entry,
+          targetData: await transaction.get(doc(db, "characters", entry.target.id)),
+          inventoryData: await transaction.get(entry.itemRef),
+        })));
+        if (destinationStates.some((entry) => !entry.targetData.exists() || entry.targetData.data().ativo !== true)) {
+          throw new Error("Um dos personagens selecionados não está mais ativo.");
+        }
 
-      await addDoc(notificationsRef, {
-        tipo: "item_recebido",
-        titulo: "ITEM RECEBIDO",
-        itemNome: itemToTransfer.nome,
-        quantidade: quantityToTransfer,
-        remetenteId: originId,
-        remetenteNome: senderName,
-        lida: false,
-        criadaEm: serverTimestamp(),
+        const remaining = currentQuantity - total;
+        if (remaining === 0) transaction.delete(originRef);
+        else transaction.update(originRef, { quantidade: remaining });
+
+        for (const entry of destinationStates) {
+          if (entry.inventoryData.exists()) {
+            transaction.update(entry.itemRef, {
+              quantidade: (Number(entry.inventoryData.data().quantidade) || 0) + perRecipient,
+            });
+          } else {
+            transaction.set(entry.itemRef, {
+              id: entry.itemRef.id,
+              nome: itemToTransfer.nome,
+              categoria: itemToTransfer.categoria,
+              categoriaAutomatica: itemToTransfer.categoriaAutomatica,
+              quantidade: perRecipient,
+            });
+          }
+          transaction.set(entry.notificationRef, {
+            tipo: "item_recebido",
+            titulo: "ITEM RECEBIDO",
+            itemNome: itemToTransfer.nome,
+            quantidade: perRecipient,
+            remetenteId: originId,
+            remetenteNome: String(sender.data()?.nome || character),
+            lida: false,
+            criadaEm: serverTimestamp(),
+          });
+        }
       });
-
-      console.log("🔔 NOTIFICAÇÃO DE RECEBIMENTO CRIADA");
-      console.log("✅ ITEM ADICIONADO AO DESTINO");
 
       setTransferModalVisible(false);
       setItemToTransfer(null);
-      setDestinationCharacter(null);
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, 300)
-      );
-
-      await verifyInventories(
-        originId,
-        destinationId
-      );
+      setDestinationCharacterIds([]);
+      setTransferQuantity("1");
     } catch (error) {
-      console.error(
-        "❌ ERRO AO TRANSFERIR ITEM:",
-        error
-      );
+      console.error("ERRO AO TRANSFERIR ITENS:", error);
+      Alert.alert("Transferência não concluída", error instanceof Error ? error.message : "Verifique a conexão e tente novamente.");
     } finally {
       setSaving(false);
     }
   }
-
-  /* =======================================================
-     RENDER ITEM
-  ======================================================= */
 
   const renderItem = ({
     item,
@@ -1470,10 +1274,6 @@ export default function InventoryScreen() {
     );
   };
 
-  /* =======================================================
-     CATEGORIA SELECIONADA
-  ======================================================= */
-
   const selectedCategoryName = useMemo(() => {
     if (!selectedItem) {
       return "";
@@ -1485,10 +1285,6 @@ export default function InventoryScreen() {
       ]?.nome ?? "DIVERSOS"
     );
   }, [selectedItem]);
-
-  /* =======================================================
-     RENDER
-  ======================================================= */
 
   return (
     <>
@@ -1539,7 +1335,7 @@ export default function InventoryScreen() {
           value={newItem}
           onChangeText={setNewItem}
           placeholder="ADICIONAR ITEM..."
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.placeholder}
           style={styles.input}
           onSubmitEditing={addItem}
           returnKeyType="done"
@@ -1553,7 +1349,7 @@ export default function InventoryScreen() {
           }
           keyboardType="number-pad"
           placeholder="QTD"
-          placeholderTextColor="#555"
+          placeholderTextColor={colors.placeholder}
           style={styles.quantityInput}
         />
 
@@ -1600,10 +1396,6 @@ export default function InventoryScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
-
-      {/* =====================================================
-          MODAL DE EXCLUSÃO
-      ===================================================== */}
 
       <Modal
         visible={deleteModalVisible}
@@ -1689,10 +1481,6 @@ export default function InventoryScreen() {
         </View>
       </Modal>
 
-      {/* =====================================================
-          MODAL DE TRANSFERÊNCIA
-      ===================================================== */}
-
       <Modal
         visible={transferModalVisible}
         transparent
@@ -1737,93 +1525,55 @@ export default function InventoryScreen() {
               PERSONAGENS ATIVOS
             </Text>
 
-            <View style={styles.transferCharacters}>
+            <ScrollView style={styles.transferCharacters} nestedScrollEnabled>
               {activeCharacters
-                .filter((activeCharacter) => {
-                  const characterIdMap: Record<string, string> = {
-                    Ciborgue: "cyborg",
-                    Tengu: "tengu",
-                    Elfo: "elf",
-                    Tiefling: "tiefling",
-                    Draconata: "dragonborn",
-                  };
-
+                .filter((entry) => entry.id !== ({ Ciborgue: "cyborg", Tengu: "tengu", Elfo: "elf", Tiefling: "tiefling", Draconata: "dragonborn" } as Record<string, string>)[character ?? ""])
+                .map((target) => {
+                  const selected = destinationCharacterIds.includes(target.id);
                   return (
-                    activeCharacter.id !==
-                    characterIdMap[character ?? ""]
+                    <Pressable
+                      key={target.id}
+                      style={[styles.transferCharacterButton, selected && styles.transferCharacterSelected]}
+                      onPress={() => setDestinationCharacterIds((current) => selected ? current.filter((id) => id !== target.id) : [...current, target.id])}
+                      disabled={saving}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.transferCharacterText}>{target.nome.toUpperCase()}</Text>
+                        <Text style={styles.transferCharacterRace}>{target.raca.toUpperCase()}</Text>
+                      </View>
+                      <Text style={styles.transferCheckbox}>{selected ? "☑" : "□"}</Text>
+                    </Pressable>
                   );
-                })
-                .map((activeCharacter) => (
-                  <Pressable
-                    key={activeCharacter.id}
-                    style={styles.transferCharacterButton}
-                    onPress={() =>
-                      setDestinationCharacter(activeCharacter)
-                    }
-                    disabled={saving}
-                  >
-                    <Text style={styles.transferCharacterText}>
-                      {activeCharacter.nome.toUpperCase()}
-                    </Text>
-                  </Pressable>
-                ))}
-
-              {activeCharacters.filter((activeCharacter) => {
-                const characterIdMap: Record<string, string> = {
-                  Ciborgue: "cyborg",
-                  Tengu: "tengu",
-                  Elfo: "elf",
-                  Tiefling: "tiefling",
-                  Draconata: "dragonborn",
-                };
-
-                return (
-                  activeCharacter.id !==
-                  characterIdMap[character ?? ""]
-                );
-              }).length === 0 && (
-                <Text style={styles.noActiveCharactersText}>
-                  NENHUM OUTRO PERSONAGEM ATIVO.
-                </Text>
+                })}
+              {activeCharacters.filter((entry) => entry.id !== ({ Ciborgue: "cyborg", Tengu: "tengu", Elfo: "elf", Tiefling: "tiefling", Draconata: "dragonborn" } as Record<string, string>)[character ?? ""]).length === 0 && (
+                <Text style={styles.noActiveCharactersText}>NENHUM OUTRO PERSONAGEM ATIVO.</Text>
               )}
-            </View>
+            </ScrollView>
 
-            {destinationCharacter && itemToTransfer && (
+            {destinationCharacterIds.length > 0 && itemToTransfer && (
               <View style={styles.transferConfirmation}>
                 <Text style={styles.transferConfirmationText}>
-                  TRANSFERIR {transferQuantity || "0"}x "{itemToTransfer.nome}" PARA
+                  {transferQuantity || "0"} UN. PARA CADA PERSONAGEM
                 </Text>
-
                 <Text style={styles.transferConfirmationName}>
-                  {destinationCharacter.nome.toUpperCase()}?
+                  {destinationCharacterIds.length} DESTINATÁRIO(S) · TOTAL: {(Number(transferQuantity) || 0) * destinationCharacterIds.length} UN.
                 </Text>
-
                 <View style={styles.confirmButtons}>
                   <Pressable
                     style={styles.confirmCancelButton}
-                    onPress={() =>
-                      setDestinationCharacter(null)
-                    }
+                    onPress={() => setDestinationCharacterIds([])}
                     disabled={saving}
                   >
-                    <Text style={styles.confirmCancelText}>
-                      VOLTAR
-                    </Text>
+                    <Text style={styles.confirmCancelText}>LIMPAR</Text>
                   </Pressable>
-
                   <Pressable
-                    style={[
-                      styles.confirmTransferButton,
-                      saving && styles.disabledButton,
-                    ]}
-                    onPress={() =>
-                      transferItem(destinationCharacter.id)
-                    }
-                    disabled={saving}
+                    style={[styles.confirmTransferButton, (saving || !Number.isSafeInteger(Number(transferQuantity)) || Number(transferQuantity) < 1 || Number(transferQuantity) * destinationCharacterIds.length > itemToTransfer.quantidade) && styles.disabledButton]}
+                    onPress={() => void transferItem()}
+                    disabled={saving || !Number.isSafeInteger(Number(transferQuantity)) || Number(transferQuantity) < 1 || Number(transferQuantity) * destinationCharacterIds.length > itemToTransfer.quantidade}
                   >
-                    <Text style={styles.confirmTransferText}>
-                      {saving ? "TRANSFERINDO..." : "TRANSFERIR"}
-                    </Text>
+                    <Text style={styles.confirmTransferText}>{saving ? "TRANSFERINDO..." : "CONFIRMAR TRANSFERÊNCIA"}</Text>
                   </Pressable>
                 </View>
               </View>
@@ -1841,10 +1591,6 @@ export default function InventoryScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* =====================================================
-          MODAL DE CATEGORIAS
-      ===================================================== */}
 
       <Modal
         visible={categoryModalVisible}
@@ -1958,11 +1704,7 @@ export default function InventoryScreen() {
   );
 }
 
-/* =========================================================
-   ESTILOS
-========================================================= */
-
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   receivedNotification: {
     position: "absolute",
     top: "50%",
@@ -2421,17 +2163,34 @@ const styles = StyleSheet.create({
 
   transferCharacters: {
     marginTop: 18,
-    gap: 8,
+    maxHeight: 240,
   },
 
   transferCharacterButton: {
-    height: 42,
+    minHeight: 53,
+    flexDirection: "row",
     borderWidth: 1,
     borderColor: "#222",
     borderRadius: 6,
     backgroundColor: "#050505",
     alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  transferCharacterSelected: {
+    borderColor: "#877177",
+    backgroundColor: "#1c1719",
+  },
+  transferCharacterRace: {
+    color: "#797173",
+    fontSize: 9,
+    letterSpacing: 1,
+    marginTop: 5,
+  },
+  transferCheckbox: {
+    color: "#bba6aa",
+    fontSize: 22,
+    marginLeft: 12,
   },
 
   transferCharacterText: {

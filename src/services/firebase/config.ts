@@ -1,20 +1,23 @@
-
 import { initializeApp } from "firebase/app";
-import {
-  doc,
-  getDoc,
-  initializeFirestore,
-} from "firebase/firestore";
+import { doc, getDoc, initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBqXEVvmheF1m9uK4N8vpLoMLCxRyXYQ2s",
-  authDomain: "annihilation-b112b.firebaseapp.com",
-  projectId: "annihilation-b112b",
-  storageBucket: "annihilation-b112b.firebasestorage.app",
-  messagingSenderId: "168332051529",
-  appId: "1:168332051529:web:0d30c75e1571e43e772b98",
-  measurementId: "G-871QK4JNWN",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
+
+const missing = Object.entries(firebaseConfig)
+  .filter(([key, value]) => key !== "measurementId" && !value)
+  .map(([key]) => key);
+
+if (missing.length > 0) {
+  console.error(`Configuração Firebase incompleta: ${missing.join(", ")}`);
+}
 
 const app = initializeApp(firebaseConfig);
 
@@ -23,22 +26,3 @@ const db = initializeFirestore(app, {
 });
 
 export { db };
-
-export async function testarFirestore() {
-  console.log("[TESTE FIRESTORE] Iniciando leitura...");
-
-  try {
-    const referencia = doc(db, "game", "session");
-    const resultado = await getDoc(referencia);
-
-    console.log("[TESTE FIRESTORE] Leitura concluída:", {
-      existe: resultado.exists(),
-      dados: resultado.exists() ? resultado.data() : null,
-    });
-
-    return true;
-  } catch (erro) {
-    console.error("[TESTE FIRESTORE] Falha na leitura:", erro);
-    return false;
-  }
-}

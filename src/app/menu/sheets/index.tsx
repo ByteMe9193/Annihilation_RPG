@@ -1,6 +1,6 @@
+import { useAppTheme } from "@/theme/AppTheme";
+import { useThemedStyles } from "@/theme/useThemedStyles";
 import React, { useEffect, useRef, useState } from "react";
-
-
 
 import {
 
@@ -32,35 +32,14 @@ import {
 
 } from "react-native";
 
-
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-
 
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 
-
-
 import { getCharacter, updateCharacter } from "@/services/firebase/characters";
 
-
-
 import { db } from "@/services/firebase/config";
-
-
-
-/*
-
- * =========================================================
-
- * PERSONAGENS
-
- * =========================================================
-
- */
-
-
+import { EditableNumberField } from "@/components/EditableNumberField";
 
 const firebaseIds: Record<string, string> = {
 
@@ -75,26 +54,6 @@ const firebaseIds: Record<string, string> = {
   Draconata: "dragonborn",
 
 };
-
-
-
-/*
-
- * =========================================================
-
- * ÍCONES DE INSPEÇÃO
-
- * =========================================================
-
- *
-
- * Os tipos usados aqui são os mesmos definidos em
-
- * characterDefaults.inspecao.
-
- */
-
-
 
 const inspectionIcons: Record<string, any> = {
 
@@ -114,20 +73,6 @@ const inspectionIcons: Record<string, any> = {
 
 };
 
-
-
-/*
-
- * =========================================================
-
- * FOTOS
-
- * =========================================================
-
- */
-
-
-
 const characterPhotos: Record<string, any> = {
 
   Ciborgue: require("@/assets/characters/cyborg-photo.png"),
@@ -141,20 +86,6 @@ const characterPhotos: Record<string, any> = {
   Draconata: require("@/assets/characters/dragonborn-photo.png"),
 
 };
-
-
-
-/*
-
- * =========================================================
-
- * IMAGENS DAS SKILL CARDS
-
- * =========================================================
-
- */
-
-
 
 const skillCardImages: Record<string, any> = {
 
@@ -188,7 +119,7 @@ const skillCardImages: Record<string, any> = {
 
   incantation: require("@/assets/skillCards/incantation.png"),
 
-  lightBow: require("@/assets/skillCards/lightBow\.png"),
+  lightBow: require("@/assets/skillCards/lightBow.png"),
 
   malware: require("@/assets/skillCards/malware.png"),
 
@@ -220,20 +151,6 @@ const skillCardImages: Record<string, any> = {
 
 };
 
-
-
-/*
-
- * =========================================================
-
- * ATRIBUTOS
-
- * =========================================================
-
- */
-
-
-
 const attributes = [
 
   { key: "forca", label: "FOR" },
@@ -250,20 +167,6 @@ const attributes = [
 
 ];
 
-
-
-/*
-
- * =========================================================
-
- * TIPOS
-
- * =========================================================
-
- */
-
-
-
 type SkillCardEffect = {
 
   tipo: string;
@@ -278,8 +181,6 @@ type SkillCardEffect = {
 
 };
 
-
-
 type SkillCardCooldown = {
 
   habilitada: boolean;
@@ -287,8 +188,6 @@ type SkillCardCooldown = {
   segundos: number | null;
 
 };
-
-
 
 type SkillCardData = {
 
@@ -310,20 +209,6 @@ type SkillCardData = {
 
 };
 
-
-
-/*
-
- * =========================================================
-
- * FORMATADOR DE NOME
-
- * =========================================================
-
- */
-
-
-
 function formatCardName(name: string) {
 
   if (name === "downToAFineArt") {
@@ -332,81 +217,24 @@ function formatCardName(name: string) {
 
   }
 
-
-
   return name.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase();
 
 }
 
-
-
-/*
-
- * =========================================================
-
- * FICHA COMPLETA
-
- * =========================================================
-
- */
-
-
-
 export default function CompleteSheet() {
+  const styles = useThemedStyles(baseStyles);
+  const { colors } = useAppTheme();
+
 
   const { width } = useWindowDimensions();
 
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * PERSONAGEM
-
-   * -------------------------------------------------------
-
-   */
-
-
-
   const [characterName, setCharacterName] = useState<string | null>(null);
 
-
-
   const [loading, setLoading] = useState(true);
-
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * IDENTIDADE
-
-   * -------------------------------------------------------
-
-   */
-
-
 
   const [name, setName] = useState("");
 
   const [race, setRace] = useState("");
-
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * ESTADOS BÁSICOS
-
-   * -------------------------------------------------------
-
-   */
-
-
 
   const [vidaAtual, setVidaAtual] = useState(0);
 
@@ -415,20 +243,6 @@ export default function CompleteSheet() {
   const [evasao, setEvasao] = useState(0);
 
   const [instintoAtual, setInstintoAtual] = useState(0);
-
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * ATRIBUTOS
-
-   * -------------------------------------------------------
-
-   */
-
-
 
   const [attributeValues, setAttributeValues] = useState<
 
@@ -450,35 +264,7 @@ export default function CompleteSheet() {
 
   });
 
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * CLASSE
-
-   * -------------------------------------------------------
-
-   */
-
-
-
   const [classe, setClasse] = useState("");
-
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * SKILL CARDS
-
-   * -------------------------------------------------------
-
-   */
-
-
 
   const [skillCards, setSkillCards] = useState<any>({
 
@@ -489,8 +275,6 @@ export default function CompleteSheet() {
     tier3: null,
 
   });
-
-
 
   const [skillCardData, setSkillCardData] = useState<{
 
@@ -510,24 +294,6 @@ export default function CompleteSheet() {
 
   });
 
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * COOLDOWNS
-
-   *
-
-   * Armazena o timestamp em que cada carta termina.
-
-   * -------------------------------------------------------
-
-   */
-
-
-
   const [skillCardCooldowns, setSkillCardCooldowns] = useState<{
 
     tier1: number | null;
@@ -546,33 +312,9 @@ export default function CompleteSheet() {
 
   });
 
-
-
   const [currentTime, setCurrentTime] = useState(Date.now());
 
-
-
   const [activatingSkillCard, setActivatingSkillCard] = useState(false);
-
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * RECURSOS
-
-   *
-
-   * Recursos acumuláveis/gastáveis ficam em "recursos".
-
-   * Ex.: Rancor, Flechas de Luz e Energia.
-
-   * -------------------------------------------------------
-
-   */
-
-
 
   const [recursos, setRecursos] = useState<
 
@@ -592,28 +334,6 @@ export default function CompleteSheet() {
 
   >({});
 
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * ESTADOS DINÂMICOS
-
-   *
-
-   * Estados que fazem parte diretamente da condição do
-
-   * personagem ficam em "estados".
-
-   * Ex.: armadura e escudo.
-
-   * -------------------------------------------------------
-
-   */
-
-
-
   const [estados, setEstados] = useState<
 
     Record<
@@ -632,95 +352,35 @@ export default function CompleteSheet() {
 
   >({});
 
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * OUTROS CAMPOS
-
-   * -------------------------------------------------------
-
-   */
-
-
-
   type EscolhaImportante = { sessao: number; texto: string; criadoEm: number } | string;
 
   const [escolhasImportantes, setEscolhasImportantes] = useState<EscolhaImportante[]>([]);
 
-
-
   const [efeitosAtivos, setEfeitosAtivos] = useState("");
-
-
 
   const [modificacoes, setModificacoes] = useState("");
 
-
-
   const [inspecao, setInspecao] = useState<any[]>([]);
-
-
-
-  /*
-
-   * -------------------------------------------------------
-
-   * MODAL
-
-   * -------------------------------------------------------
-
-   */
-
-
 
   const [selectedSkillCard, setSelectedSkillCard] =
 
     useState<SkillCardData | null>(null);
 
-
-
   const [modalVisible, setModalVisible] = useState(false);
-
-
 
   const modalOverlayOpacity = useRef(new Animated.Value(0)).current;
 
-
-
   const modalOpacity = useRef(new Animated.Value(0)).current;
-
-
 
   const modalScale = useRef(new Animated.Value(0.94)).current;
 
-
-
   const modalTranslateY = useRef(new Animated.Value(14)).current;
-
-
-
-  /*
-
-   * =========================================================
-
-   * ABRIR SKILL CARD
-
-   * =========================================================
-
-   */
-
-
 
   function openSkillCard(card: SkillCardData) {
 
     setSelectedSkillCard(card);
 
     setModalVisible(true);
-
-
 
     modalOverlayOpacity.setValue(0);
 
@@ -729,8 +389,6 @@ export default function CompleteSheet() {
     modalScale.setValue(0.9);
 
     modalTranslateY.setValue(24);
-
-
 
     Animated.timing(modalOverlayOpacity, {
 
@@ -741,8 +399,6 @@ export default function CompleteSheet() {
       useNativeDriver: true,
 
     }).start();
-
-
 
     Animated.parallel([
 
@@ -758,8 +414,6 @@ export default function CompleteSheet() {
 
       }),
 
-
-
       Animated.spring(modalScale, {
 
         toValue: 1,
@@ -773,8 +427,6 @@ export default function CompleteSheet() {
         useNativeDriver: true,
 
       }),
-
-
 
       Animated.timing(modalTranslateY, {
 
@@ -792,20 +444,6 @@ export default function CompleteSheet() {
 
   }
 
-
-
-  /*
-
-   * =========================================================
-
-   * FECHAR SKILL CARD
-
-   * =========================================================
-
-   */
-
-
-
   function closeSkillCard() {
 
     Animated.parallel([
@@ -820,8 +458,6 @@ export default function CompleteSheet() {
 
       }),
 
-
-
       Animated.timing(modalOpacity, {
 
         toValue: 0,
@@ -832,8 +468,6 @@ export default function CompleteSheet() {
 
       }),
 
-
-
       Animated.timing(modalScale, {
 
         toValue: 0.94,
@@ -843,8 +477,6 @@ export default function CompleteSheet() {
         useNativeDriver: true,
 
       }),
-
-
 
       Animated.timing(modalTranslateY, {
 
@@ -866,20 +498,6 @@ export default function CompleteSheet() {
 
   }
 
-
-
-  /*
-
-   * =========================================================
-
-   * RECUPERAR PERSONAGEM DO CELULAR
-
-   * =========================================================
-
-   */
-
-
-
   useEffect(() => {
 
     async function loadSelectedCharacter() {
@@ -888,13 +506,9 @@ export default function CompleteSheet() {
 
         const storedCharacter = await AsyncStorage.getItem("selectedCharacter");
 
-
-
         if (!storedCharacter || !firebaseIds[storedCharacter]) {
 
           console.error("Nenhum personagem selecionado.");
-
-
 
           setLoading(false);
 
@@ -902,15 +516,11 @@ export default function CompleteSheet() {
 
         }
 
-
-
         setCharacterName(storedCharacter);
 
       } catch (error) {
 
         console.error("Erro ao recuperar personagem:", error);
-
-
 
         setLoading(false);
 
@@ -918,57 +528,13 @@ export default function CompleteSheet() {
 
     }
 
-
-
     loadSelectedCharacter();
 
   }, []);
 
-
-
-  /*
-
-   * =========================================================
-
-   * ID FIREBASE
-
-   * =========================================================
-
-   */
-
-
-
   const firebaseCharacterId = characterName ? firebaseIds[characterName] : null;
 
-
-
-  /*
-
-   * =========================================================
-
-   * FOTO
-
-   * =========================================================
-
-   */
-
-
-
   const photo = characterName ? characterPhotos[characterName] : null;
-
-
-
-  /*
-
-   * =========================================================
-
-   * SINCRONIZAÇÃO DA FICHA EM TEMPO REAL
-
-   * =========================================================
-
-   */
-
-
 
   useEffect(() => {
 
@@ -978,15 +544,9 @@ export default function CompleteSheet() {
 
     }
 
-
-
     setLoading(true);
 
-
-
     const characterRef = doc(db, "characters", firebaseCharacterId);
-
-
 
     const unsubscribe = onSnapshot(
 
@@ -1006,17 +566,11 @@ export default function CompleteSheet() {
 
           }
 
-
-
           const firebaseData = snapshot.data();
-
-
 
           setName(firebaseData.nome ?? characterName);
 
           setRace(firebaseData.raca ?? characterName);
-
-
 
           setVidaAtual(firebaseData.vidaAtual ?? 0);
 
@@ -1025,8 +579,6 @@ export default function CompleteSheet() {
           setEvasao(firebaseData.evasao ?? 0);
 
           setInstintoAtual(firebaseData.instintoAtual ?? 0);
-
-
 
           setAttributeValues({
 
@@ -1044,11 +596,7 @@ export default function CompleteSheet() {
 
           });
 
-
-
           setClasse(firebaseData.classe ?? "");
-
-
 
           const loadedSkillCards = firebaseData.skillCards ?? {
 
@@ -1060,15 +608,9 @@ export default function CompleteSheet() {
 
           };
 
-
-
           setSkillCards(loadedSkillCards);
 
-
-
           const tiers = ["tier1", "tier2", "tier3"] as const;
-
-
 
           const loadedCardData: {
 
@@ -1088,13 +630,9 @@ export default function CompleteSheet() {
 
           };
 
-
-
           for (const tier of tiers) {
 
             const cardId = loadedSkillCards[tier];
-
-
 
             if (!cardId) {
 
@@ -1102,11 +640,7 @@ export default function CompleteSheet() {
 
             }
 
-
-
             const cardSnapshot = await getDoc(doc(db, "skillCards", cardId));
-
-
 
             if (cardSnapshot.exists()) {
 
@@ -1122,11 +656,7 @@ export default function CompleteSheet() {
 
           }
 
-
-
           setSkillCardData(loadedCardData);
-
-
 
           setSkillCardCooldowns({
 
@@ -1138,13 +668,9 @@ export default function CompleteSheet() {
 
           });
 
-
-
           setEstados(firebaseData.estados ?? {});
 
           setRecursos(firebaseData.recursos ?? {});
-
-
 
           setEscolhasImportantes(
             (firebaseData.escolhasImportantes ?? []).filter(
@@ -1157,8 +683,6 @@ export default function CompleteSheet() {
           setModificacoes(firebaseData.modificacoes ?? "");
 
           setInspecao(firebaseData.inspecao ?? []);
-
-
 
           setCurrentTime(Date.now());
 
@@ -1184,25 +708,9 @@ export default function CompleteSheet() {
 
     );
 
-
-
     return () => unsubscribe();
 
   }, [characterName, firebaseCharacterId]);
-
-
-
-  /*
-
-   * =========================================================
-
-   * ATUALIZAÇÃO DO RELÓGIO DOS COOLDOWNS
-
-   * =========================================================
-
-   */
-
-
 
   useEffect(() => {
 
@@ -1212,23 +720,17 @@ export default function CompleteSheet() {
 
     );
 
-
-
     if (!hasCooldown) {
 
       return;
 
     }
 
-
-
     const interval = setInterval(() => {
 
       setCurrentTime(Date.now());
 
     }, 1000);
-
-
 
     return () => {
 
@@ -1238,20 +740,6 @@ export default function CompleteSheet() {
 
   }, [skillCardCooldowns]);
 
-
-
-  /*
-
-   * =========================================================
-
-   * SALVAR CAMPO
-
-   * =========================================================
-
-   */
-
-
-
   async function saveField(field: string, value: any) {
 
     if (!firebaseCharacterId) {
@@ -1259,8 +747,6 @@ export default function CompleteSheet() {
       return;
 
     }
-
-
 
     try {
 
@@ -1280,53 +766,9 @@ export default function CompleteSheet() {
 
 
 
-  /*
-
-   * =========================================================
-
-   * ATRIBUTO
-
-   * =========================================================
-
-   */
-
-
-
-  function updateAttribute(key: string, text: string) {
-
-    const value = Number(text);
-
-
-
-    setAttributeValues((previous) => ({
-
-      ...previous,
-
-      [key]: Number.isNaN(value) ? 0 : value,
-
-    }));
-
-  }
-
-
-
-  /*
-
-   * =========================================================
-
-   * TEMPO RESTANTE
-
-   * =========================================================
-
-   */
-
-
-
   function getSkillCardRemainingSeconds(tier: "tier1" | "tier2" | "tier3") {
 
     const cooldownEnd = skillCardCooldowns[tier];
-
-
 
     if (!cooldownEnd) {
 
@@ -1334,25 +776,9 @@ export default function CompleteSheet() {
 
     }
 
-
-
     return Math.max(0, Math.ceil((cooldownEnd - currentTime) / 1000));
 
   }
-
-
-
-  /*
-
-   * =========================================================
-
-   * FORMATAR TEMPO
-
-   * =========================================================
-
-   */
-
-
 
   function formatCooldown(seconds: number) {
 
@@ -1361,8 +787,6 @@ export default function CompleteSheet() {
     const minutes = Math.floor((seconds % 3600) / 60);
 
     const remainingSeconds = seconds % 60;
-
-
 
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
 
@@ -1374,20 +798,6 @@ export default function CompleteSheet() {
 
   }
 
-
-
-  /*
-
-   * =========================================================
-
-   * ATIVAR SKILL CARD
-
-   * =========================================================
-
-   */
-
-
-
   async function activateSkillCard(tier: "tier1" | "tier2" | "tier3") {
 
     if (!firebaseCharacterId || !selectedSkillCard || activatingSkillCard) {
@@ -1396,19 +806,7 @@ export default function CompleteSheet() {
 
     }
 
-
-
-    /*
-
-     * Impede ativação durante cooldown.
-
-     */
-
-
-
     const remainingSeconds = getSkillCardRemainingSeconds(tier);
-
-
 
     if (remainingSeconds > 0) {
 
@@ -1416,21 +814,9 @@ export default function CompleteSheet() {
 
     }
 
-
-
     try {
 
       setActivatingSkillCard(true);
-
-
-
-      /*
-
-       * Busca o estado mais atual diretamente do Firebase.
-
-       */
-
-
 
       const characterSnapshot = await getDoc(
 
@@ -1438,43 +824,17 @@ export default function CompleteSheet() {
 
       );
 
-
-
       if (!characterSnapshot.exists()) {
 
         return;
 
       }
 
-
-
       const characterData = characterSnapshot.data();
 
       const updates: Record<string, any> = {};
 
-
-
-      /*
-
-       * =====================================================
-
-       * EFEITOS
-
-       * =====================================================
-
-       *
-
-       * Cada efeito vem do Firestore e é interpretado pelo
-
-       * seu "tipo". A carta não precisa ser conhecida pelo app.
-
-       */
-
-
-
       const effects = selectedSkillCard.efeitos ?? [];
-
-
 
       const currentStates = characterData.estados ?? {};
 
@@ -1484,8 +844,6 @@ export default function CompleteSheet() {
 
       };
 
-
-
       const currentResources = characterData.recursos ?? {};
 
       const updatedResources = {
@@ -1494,39 +852,17 @@ export default function CompleteSheet() {
 
       };
 
-
-
       let statesChanged = false;
 
       let resourcesChanged = false;
-
-
-
-      /*
-
-       * Efeitos que o app ainda não possui uma regra específica
-
-       * não são descartados. Eles ficam registrados de forma
-
-       * estruturada para uso posterior.
-
-       */
-
-
 
       const currentStructuredEffects =
 
         characterData.efeitosAtivosEstruturados ?? [];
 
-
-
       const updatedStructuredEffects = [...currentStructuredEffects];
 
-
-
       let structuredEffectsChanged = false;
-
-
 
       for (const effect of effects) {
 
@@ -1536,81 +872,19 @@ export default function CompleteSheet() {
 
         }
 
-
-
-        /*
-
-         * -----------------------------------------------------
-
-         * ATRIBUTO
-
-         * -----------------------------------------------------
-
-         *
-
-         * Exemplo:
-
-         * {
-
-         *   tipo: "atributo",
-
-         *   campo: "presenca",
-
-         *   valor: 3
-
-         * }
-
-         */
-
-
-
         if (effect.tipo === "atributo") {
 
           const currentValue = Number(characterData[effect.campo] ?? 0);
 
-
-
           updates[effect.campo] = currentValue + Number(effect.valor ?? 0);
-
-
 
           continue;
 
         }
 
-
-
-        /*
-
-         * -----------------------------------------------------
-
-         * ESTADO
-
-         * -----------------------------------------------------
-
-         *
-
-         * Estados ficam diretamente em "estados".
-
-         * Exemplo: escudoRegenerativo.
-
-         */
-
-
-
         if (effect.tipo === "estado") {
 
           const existingState = updatedStates[effect.campo];
-
-
-
-          /*
-
-           * Pele Endurecida: PASSAR CENA recupera +2 de
-
-           * armadura por cena, nunca ultrapassando o máximo.
-
-           */
 
           const isHardenedSkin =
 
@@ -1618,19 +892,13 @@ export default function CompleteSheet() {
 
             effect.campo === "armadura";
 
-
-
           const isNecrobioticCuirass =
 
             selectedSkillCard.imagem === "necrobioticCuirass" &&
 
             effect.campo === "escudo";
 
-
-
           const effectMaximo = effect.maximo ?? effect.valorMaximo;
-
-
 
           if (existingState === undefined) {
 
@@ -1664,15 +932,9 @@ export default function CompleteSheet() {
 
           }
 
-
-
           const maximo = effectMaximo ?? existingState.maximo;
 
-
-
           let newValue = Number(existingState.atual ?? 0);
-
-
 
           if (isHardenedSkin) {
 
@@ -1688,19 +950,13 @@ export default function CompleteSheet() {
 
           }
 
-
-
           if (maximo !== undefined) {
 
             newValue = Math.min(newValue, Number(maximo));
 
           }
 
-
-
           newValue = Math.max(0, newValue);
-
-
 
           updatedStates[effect.campo] = {
 
@@ -1712,55 +968,15 @@ export default function CompleteSheet() {
 
           };
 
-
-
           statesChanged = true;
 
           continue;
 
         }
 
-
-
-        /*
-
-         * -----------------------------------------------------
-
-         * RECURSO
-
-         * -----------------------------------------------------
-
-         *
-
-         * Exemplo:
-
-         * {
-
-         *   tipo: "recurso",
-
-         *   campo: "rancor",
-
-         *   valor: 0,
-
-         *   maximo: 5
-
-         * }
-
-         *
-
-         * Se o recurso não existir, ele é criado.
-
-         * Se já existir, valor 0 apenas garante sua existência.
-
-         */
-
-
-
         if (effect.tipo === "recurso") {
 
           const existingResource = updatedResources[effect.campo];
-
-
 
           if (existingResource === undefined) {
 
@@ -1780,19 +996,13 @@ export default function CompleteSheet() {
 
             };
 
-
-
             resourcesChanged = true;
 
             continue;
 
           }
 
-
-
           let newValue = Number(existingResource.atual ?? 0);
-
-
 
           if (Number(effect.valor ?? 0) !== 0) {
 
@@ -1800,11 +1010,7 @@ export default function CompleteSheet() {
 
           }
 
-
-
           const maximo = effect.maximo ?? existingResource.maximo;
-
-
 
           if (maximo !== undefined) {
 
@@ -1812,11 +1018,7 @@ export default function CompleteSheet() {
 
           }
 
-
-
           newValue = Math.max(0, newValue);
-
-
 
           updatedResources[effect.campo] = {
 
@@ -1836,35 +1038,11 @@ export default function CompleteSheet() {
 
           };
 
-
-
           resourcesChanged = true;
 
           continue;
 
         }
-
-
-
-        /*
-
-         * -----------------------------------------------------
-
-         * OUTROS TIPOS
-
-         * -----------------------------------------------------
-
-         *
-
-         * Mantemos qualquer efeito desconhecido registrado.
-
-         * Isso permite adicionar novos tipos no Firestore sem
-
-         * quebrar a ativação da carta.
-
-         */
-
-
 
         updatedStructuredEffects.push({
 
@@ -1890,25 +1068,9 @@ export default function CompleteSheet() {
 
         });
 
-
-
         structuredEffectsChanged = true;
 
       }
-
-
-
-      /*
-
-       * =====================================================
-
-       * SALVAR ESTADOS
-
-       * =====================================================
-
-       */
-
-
 
       if (statesChanged) {
 
@@ -1916,39 +1078,11 @@ export default function CompleteSheet() {
 
       }
 
-
-
-      /*
-
-       * =====================================================
-
-       * SALVAR RECURSOS
-
-       * =====================================================
-
-       */
-
-
-
       if (resourcesChanged) {
 
         updates.recursos = updatedResources;
 
       }
-
-
-
-      /*
-
-       * =====================================================
-
-       * SALVAR EFEITOS ESTRUTURADOS
-
-       * =====================================================
-
-       */
-
-
 
       if (structuredEffectsChanged) {
 
@@ -1956,23 +1090,7 @@ export default function CompleteSheet() {
 
       }
 
-
-
-      /*
-
-       * =====================================================
-
-       * COOLDOWN
-
-       * =====================================================
-
-       */
-
-
-
       let cooldownEnd: number | null = null;
-
-
 
       if (
 
@@ -1988,39 +1106,9 @@ export default function CompleteSheet() {
 
       }
 
-
-
       updates[`skillCardCooldowns.${tier}`] = cooldownEnd;
 
-
-
-      /*
-
-       * =====================================================
-
-       * SALVAR TUDO
-
-       * =====================================================
-
-       */
-
-
-
       await updateCharacter(firebaseCharacterId, updates);
-
-
-
-      /*
-
-       * =====================================================
-
-       * ATUALIZAR ESTADO LOCAL
-
-       * =====================================================
-
-       */
-
-
 
       setSkillCardCooldowns((current) => ({
 
@@ -2030,33 +1118,17 @@ export default function CompleteSheet() {
 
       }));
 
-
-
       if (statesChanged) {
 
         setEstados(updatedStates);
 
       }
 
-
-
       if (resourcesChanged) {
 
         setRecursos(updatedResources);
 
       }
-
-
-
-      /*
-
-       * Atualiza visualmente os atributos que foram alterados
-
-       * pela Skill Card.
-
-       */
-
-
 
       const attributeEffects = effects.filter(
 
@@ -2068,8 +1140,6 @@ export default function CompleteSheet() {
 
       );
 
-
-
       if (attributeEffects.length > 0) {
 
         setAttributeValues((current) => {
@@ -2080,8 +1150,6 @@ export default function CompleteSheet() {
 
           };
 
-
-
           for (const effect of attributeEffects) {
 
             updated[effect.campo] =
@@ -2090,19 +1158,13 @@ export default function CompleteSheet() {
 
           }
 
-
-
           return updated;
 
         });
 
       }
 
-
-
       setCurrentTime(Date.now());
-
-
 
       console.log(
 
@@ -2124,47 +1186,19 @@ export default function CompleteSheet() {
 
   }
 
-
-
-  /*
-
-   * =========================================================
-
-   * LOADING
-
-   * =========================================================
-
-   */
-
-
-
   if (loading) {
 
     return (
 
       <View style={styles.loading}>
 
-        <ActivityIndicator size="small" color="#ffffff" />
+        <ActivityIndicator size="small" color={colors.text} />
 
       </View>
 
     );
 
   }
-
-
-
-  /*
-
-   * =========================================================
-
-   * SEM PERSONAGEM
-
-   * =========================================================
-
-   */
-
-
 
   if (!characterName || !firebaseCharacterId) {
 
@@ -2180,37 +1214,9 @@ export default function CompleteSheet() {
 
   }
 
-
-
-  /*
-
-   * =========================================================
-
-   * EXISTE SKILL CARD?
-
-   * =========================================================
-
-   */
-
-
-
   const hasSkillCards =
 
     skillCardData.tier1 || skillCardData.tier2 || skillCardData.tier3;
-
-
-
-  /*
-
-   * =========================================================
-
-   * RENDER
-
-   * =========================================================
-
-   */
-
-
 
   return (
 
@@ -2234,37 +1240,15 @@ export default function CompleteSheet() {
 
       >
 
-        {/* =================================================
-
-            CABEÇALHO
-
-        ================================================= */}
-
-
-
         <View style={styles.header}>
 
           <Text style={styles.system}>Aniquilação</Text>
 
-
-
           <Text style={styles.title}>FICHA COMPLETA</Text>
-
-
 
           <View style={styles.line} />
 
         </View>
-
-
-
-        {/* =================================================
-
-            IDENTIDADE
-
-        ================================================= */}
-
-
 
         <View style={styles.identity}>
 
@@ -2273,8 +1257,6 @@ export default function CompleteSheet() {
             <Image source={photo} resizeMode="contain" style={styles.photo} />
 
           )}
-
-
 
           <TextInput
 
@@ -2286,105 +1268,45 @@ export default function CompleteSheet() {
 
             style={styles.nameInput}
 
-            selectionColor="#ffffff"
+            selectionColor={colors.accent}
 
           />
-
-
 
           <Text style={styles.race}>{race.toUpperCase()}</Text>
 
         </View>
 
-
-
-        {/* =================================================
-
-            FICHA BÁSICA
-
-        ================================================= */}
-
-
-
         <View style={styles.section}>
 
           <SectionHeader title="FICHA BÁSICA" />
 
-
-
           <View style={styles.stateGrid}>
-
-            {/* VIDA */}
-
-
 
             <StateBox label="VIDA">
 
               <View style={styles.valueRow}>
 
-                <TextInput
-
-                  value={String(vidaAtual)}
-
-                  keyboardType="numeric"
-
-                  onChangeText={(text) => {
-
-                    const value = Number(text);
-
-
-
-                    setVidaAtual(Number.isNaN(value) ? 0 : value);
-
-                  }}
-
-                  onBlur={() => saveField("vidaAtual", vidaAtual)}
-
+                <EditableNumberField
+                  value={vidaAtual}
+                  onCommit={(value) => { setVidaAtual(value); void saveField("vidaAtual", value); }}
+                  min={0}
                   style={styles.valueInput}
-
-                  selectionColor="#ffffff"
-
+                  selectionColor={colors.accent}
                 />
-
-
 
                 <Text style={styles.slash}>/</Text>
 
-
-
-                <TextInput
-
-                  value={String(vidaMaxima)}
-
-                  keyboardType="numeric"
-
-                  onChangeText={(text) => {
-
-                    const value = Number(text);
-
-
-
-                    setVidaMaxima(Number.isNaN(value) ? 0 : value);
-
-                  }}
-
-                  onBlur={() => saveField("vidaMaxima", vidaMaxima)}
-
+                <EditableNumberField
+                  value={vidaMaxima}
+                  onCommit={(value) => { setVidaMaxima(value); void saveField("vidaMaxima", value); }}
+                  min={0}
                   style={styles.valueInput}
-
-                  selectionColor="#ffffff"
-
+                  selectionColor={colors.accent}
                 />
 
               </View>
 
             </StateBox>
-
-
-
-            {/* ARMADURA / ESCUDO */}
-
-
 
             {(estados.armadura || estados.escudo) && (
 
@@ -2392,79 +1314,23 @@ export default function CompleteSheet() {
 
                 <View style={styles.valueRow}>
 
-                  <TextInput
-
-                    value={String(
-
-                      (estados.armadura ?? estados.escudo)?.atual ?? 0,
-
-                    )}
-
-                    keyboardType="numeric"
-
+                  <EditableNumberField
+                    value={(estados.armadura ?? estados.escudo)?.atual ?? 0}
+                    min={0}
+                    max={(estados.armadura ?? estados.escudo)?.maximo}
                     selectTextOnFocus
-
-                    onChangeText={(text) => {
-
+                    onCommit={(value) => {
                       const campo = estados.armadura ? "armadura" : "escudo";
-
-                      const estadoAtual = estados[campo];
-
-                      const value = Number(text);
-
-                      const maximo = estadoAtual?.maximo;
-
-
-
-                      if (text === "" || !Number.isNaN(value)) {
-
-                        const safeValue =
-
-                          text === ""
-
-                            ? 0
-
-                            : Math.max(
-
-                                0,
-
-                                maximo !== undefined
-
-                                  ? Math.min(value, maximo)
-
-                                  : value,
-
-                              );
-
-
-
-                        setEstados((current) => ({
-
-                          ...current,
-
-                          [campo]: {
-
-                            ...current[campo],
-
-                            atual: safeValue,
-
-                          },
-
-                        }));
-
-                      }
-
+                      const next = {
+                        ...estados,
+                        [campo]: { ...estados[campo], atual: value },
+                      };
+                      setEstados(next);
+                      void saveField("estados", next);
                     }}
-
-                    onBlur={() => saveField("estados", estados)}
-
                     style={styles.valueInput}
-
-                    selectionColor="#ffffff"
-
+                    selectionColor={colors.accent}
                   />
-
-
 
                   {(estados.armadura ?? estados.escudo)?.maximo !==
 
@@ -2490,93 +1356,33 @@ export default function CompleteSheet() {
 
             )}
 
-
-
-            {/* EVASÃO */}
-
-
-
             <StateBox label="EVASÃO">
 
-              <TextInput
-
-                value={String(evasao)}
-
-                keyboardType="numeric"
-
+              <EditableNumberField
+                value={evasao}
+                onCommit={(value) => { setEvasao(value); void saveField("evasao", value); }}
+                min={0}
                 selectTextOnFocus
-
-                onChangeText={(text) => {
-
-                  if (/^\d*$/.test(text)) {
-
-                    setEvasao(text === "" ? 0 : Number(text));
-
-                  }
-
-                }}
-
-                onBlur={() => saveField("evasao", evasao)}
-
                 style={styles.singleValueInput}
-
-                selectionColor="#ffffff"
-
+                selectionColor={colors.accent}
               />
 
             </StateBox>
-
-
-
-            {/* INSTINTO */}
-
-
 
             <StateBox label="INSTINTO">
 
               <View style={styles.valueRow}>
 
-                <TextInput
-
-                  value={String(instintoAtual)}
-
-                  keyboardType="numeric"
-
-                  onChangeText={(text) => {
-
-                    const value = Number(text);
-
-
-
-                    if (Number.isNaN(value)) {
-
-                      setInstintoAtual(0);
-
-
-
-                      return;
-
-                    }
-
-
-
-                    setInstintoAtual(Math.min(10, Math.max(0, value)));
-
-                  }}
-
-                  onBlur={() => saveField("instintoAtual", instintoAtual)}
-
+                <EditableNumberField
+                  value={instintoAtual}
+                  onCommit={(value) => { setInstintoAtual(value); void saveField("instintoAtual", value); }}
+                  min={0}
+                  max={10}
                   style={styles.valueInput}
-
-                  selectionColor="#ffffff"
-
+                  selectionColor={colors.accent}
                 />
 
-
-
                 <Text style={styles.slash}>/</Text>
-
-
 
                 <Text style={styles.fixedValue}>10</Text>
 
@@ -2586,19 +1392,11 @@ export default function CompleteSheet() {
 
           </View>
 
-
-
-          {/* ATRIBUTOS */}
-
-
-
           <View style={styles.attributesHeader}>
 
             <SectionHeader title="ATRIBUTOS" />
 
           </View>
-
-
 
           <View style={styles.attributesGrid}>
 
@@ -2608,32 +1406,15 @@ export default function CompleteSheet() {
 
                 <Text style={styles.attributeLabel}>{attribute.label}</Text>
 
-
-
-                <TextInput
-
-                  value={String(attributeValues[attribute.key] ?? 0)}
-
-                  keyboardType="numeric"
-
-                  onChangeText={(text) => updateAttribute(attribute.key, text)}
-
-                  onBlur={() =>
-
-                    saveField(
-
-                      attribute.key,
-
-                      attributeValues[attribute.key] ?? 0,
-
-                    )
-
-                  }
-
+                <EditableNumberField
+                  value={attributeValues[attribute.key] ?? 0}
+                  allowNegative
+                  onCommit={(value) => {
+                    setAttributeValues((previous) => ({ ...previous, [attribute.key]: value }));
+                    void saveField(attribute.key, value);
+                  }}
                   style={styles.attributeInput}
-
-                  selectionColor="#ffffff"
-
+                  selectionColor={colors.accent}
                 />
 
               </View>
@@ -2644,23 +1425,11 @@ export default function CompleteSheet() {
 
         </View>
 
-
-
-        {/* =================================================
-
-            RECURSOS
-
-        ================================================= */}
-
-
-
         {Object.keys(recursos).length > 0 && (
 
           <View style={styles.section}>
 
             <SectionHeader title="RECURSOS" />
-
-
 
             <View style={styles.resourcesContainer}>
 
@@ -2674,77 +1443,30 @@ export default function CompleteSheet() {
 
                   </Text>
 
-
-
                   <View style={styles.resourceValueRow}>
 
-                    <TextInput
-
-                      value={String(recurso.atual ?? 0)}
-
-                      keyboardType="numeric"
-
+                    <EditableNumberField
+                      value={recurso.atual ?? 0}
+                      min={0}
+                      max={recurso.maximo}
                       selectTextOnFocus
-
-                      onChangeText={(text) => {
-
-                        const value = Number(text);
-
-
-
-                        const safeValue = Number.isNaN(value)
-
-                          ? 0
-
-                          : Math.max(
-
-                              0,
-
-                              recurso.maximo !== undefined
-
-                                ? Math.min(value, recurso.maximo)
-
-                                : value,
-
-                            );
-
-
-
-                        setRecursos((current) => ({
-
-                          ...current,
-
-
-
-                          [campo]: {
-
-                            ...current[campo],
-
-                            atual: safeValue,
-
-                          },
-
-                        }));
-
+                      onCommit={(value) => {
+                        const next = {
+                          ...recursos,
+                          [campo]: { ...recursos[campo], atual: value },
+                        };
+                        setRecursos(next);
+                        void saveField("recursos", next);
                       }}
-
-                      onBlur={() => saveField("recursos", recursos)}
-
                       style={styles.resourceInput}
-
-                      selectionColor="#ffffff"
-
+                      selectionColor={colors.accent}
                     />
-
-
 
                     {recurso.maximo !== undefined && (
 
                       <>
 
                         <Text style={styles.resourceSlash}>/</Text>
-
-
 
                         <Text style={styles.resourceMax}>{recurso.maximo}</Text>
 
@@ -2764,21 +1486,9 @@ export default function CompleteSheet() {
 
         )}
 
-
-
-        {/* =================================================
-
-            CLASSE
-
-        ================================================= */}
-
-
-
         <View style={styles.section}>
 
           <SectionHeader title="CLASSE" />
-
-
 
           <Text style={styles.classValue}>
 
@@ -2788,23 +1498,11 @@ export default function CompleteSheet() {
 
         </View>
 
-
-
-        {/* =================================================
-
-            SKILL CARDS
-
-        ================================================= */}
-
-
-
         {hasSkillCards && (
 
           <View style={styles.section}>
 
             <SectionHeader title="SKILL CARDS" />
-
-
 
             <ScrollView
 
@@ -2828,8 +1526,6 @@ export default function CompleteSheet() {
 
               )}
 
-
-
               {skillCardData.tier2 && (
 
                 <SkillCard
@@ -2841,8 +1537,6 @@ export default function CompleteSheet() {
                 />
 
               )}
-
-
 
               {skillCardData.tier3 && (
 
@@ -2862,21 +1556,9 @@ export default function CompleteSheet() {
 
         )}
 
-
-
-        {/* =================================================
-
-            EFEITOS ATIVOS
-
-        ================================================= */}
-
-
-
         <View style={styles.section}>
 
           <SectionHeader title="EFEITOS ATIVOS" />
-
-
 
           <TextInput
 
@@ -2890,31 +1572,19 @@ export default function CompleteSheet() {
 
             placeholder="Nenhum efeito ativo."
 
-            placeholderTextColor="#555"
+            placeholderTextColor={colors.placeholder}
 
             style={styles.largeTextField}
 
-            selectionColor="#ffffff"
+            selectionColor={colors.accent}
 
           />
 
         </View>
 
-
-
-        {/* =================================================
-
-            MODIFICAÇÕES
-
-        ================================================= */}
-
-
-
         <View style={styles.section}>
 
           <SectionHeader title="MODIFICAÇÕES" />
-
-
 
           <TextInput
 
@@ -2928,31 +1598,19 @@ export default function CompleteSheet() {
 
             placeholder="Nenhuma modificação registrada."
 
-            placeholderTextColor="#555"
+            placeholderTextColor={colors.placeholder}
 
             style={styles.largeTextField}
 
-            selectionColor="#ffffff"
+            selectionColor={colors.accent}
 
           />
 
         </View>
 
-
-
-        {/* =================================================
-
-            ESCOLHAS
-
-        ================================================= */}
-
-
-
         <View style={styles.section}>
 
           <SectionHeader title="ESCOLHAS" />
-
-
 
           {escolhasImportantes.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma escolha registrada.</Text>
@@ -2983,21 +1641,9 @@ export default function CompleteSheet() {
 
         </View>
 
-
-
-        {/* =================================================
-
-            INSPEÇÃO
-
-        ================================================= */}
-
-
-
         <View style={styles.section}>
 
           <SectionHeader title="INSPEÇÃO" />
-
-
 
           {inspecao.length === 0 ? (
 
@@ -3008,8 +1654,6 @@ export default function CompleteSheet() {
             inspecao.map((item, index) => {
 
               const icon = inspectionIcons[item?.tipo];
-
-
 
               return (
 
@@ -3043,8 +1687,6 @@ export default function CompleteSheet() {
 
                   </View>
 
-
-
                   <TextInput
 
                     value={item?.descricao ?? ""}
@@ -3053,8 +1695,6 @@ export default function CompleteSheet() {
 
                       const updated = [...inspecao];
 
-
-
                       updated[index] = {
 
                         ...updated[index],
@@ -3062,8 +1702,6 @@ export default function CompleteSheet() {
                         descricao: text,
 
                       };
-
-
 
                       setInspecao(updated);
 
@@ -3077,9 +1715,9 @@ export default function CompleteSheet() {
 
                     placeholder="Clique para editar..."
 
-                    placeholderTextColor="#555"
+                    placeholderTextColor={colors.placeholder}
 
-                    selectionColor="#ffffff"
+                    selectionColor={colors.accent}
 
                   />
 
@@ -3094,16 +1732,6 @@ export default function CompleteSheet() {
         </View>
 
       </ScrollView>
-
-
-
-      {/* =====================================================
-
-          MODAL DA SKILL CARD
-
-      ===================================================== */}
-
-
 
       <Modal
 
@@ -3145,8 +1773,6 @@ export default function CompleteSheet() {
 
                 opacity: modalOpacity,
 
-
-
                 transform: [
 
                   {
@@ -3177,13 +1803,9 @@ export default function CompleteSheet() {
 
               </Text>
 
-
-
               <View style={styles.modalHeaderLine} />
 
             </View>
-
-
 
             <Text style={styles.modalTitle}>
 
@@ -3195,11 +1817,7 @@ export default function CompleteSheet() {
 
             </Text>
 
-
-
             <View style={styles.modalSeparator} />
-
-
 
             <ScrollView
 
@@ -3219,16 +1837,6 @@ export default function CompleteSheet() {
 
             </ScrollView>
 
-
-
-            {/* =================================================
-
-                CONTROLE DA CARTA
-
-            ================================================= */}
-
-
-
             {selectedSkillCard &&
 
               (() => {
@@ -3241,15 +1849,9 @@ export default function CompleteSheet() {
 
                   | "tier3";
 
-
-
                 const remainingSeconds = getSkillCardRemainingSeconds(tier);
 
-
-
                 const isOnCooldown = remainingSeconds > 0;
-
-
 
                 const hasCooldown =
 
@@ -3257,15 +1859,9 @@ export default function CompleteSheet() {
 
                   (selectedSkillCard.recarga.segundos ?? 0) > 0;
 
-
-
                 return (
 
                   <View>
-
-                    {/* BOTÃO ATIVAR */}
-
-
 
                     <Pressable
 
@@ -3273,11 +1869,7 @@ export default function CompleteSheet() {
 
                         styles.activateSkillButton,
 
-
-
                         isOnCooldown && styles.activateSkillButtonDisabled,
-
-
 
                         pressed &&
 
@@ -3298,8 +1890,6 @@ export default function CompleteSheet() {
                         style={[
 
                           styles.activateSkillButtonText,
-
-
 
                           isOnCooldown &&
 
@@ -3327,19 +1917,11 @@ export default function CompleteSheet() {
 
                     </Pressable>
 
-
-
-                    {/* CONTADOR */}
-
-
-
                     {hasCooldown && isOnCooldown && (
 
                       <View style={styles.modalCooldown}>
 
                         <Text style={styles.modalCooldownLabel}>RECARGA</Text>
-
-
 
                         <Text style={styles.modalCooldownValue}>
 
@@ -3351,31 +1933,17 @@ export default function CompleteSheet() {
 
                     )}
 
-
-
-                    {/* SEM COOLDOWN */}
-
-
-
                     {!hasCooldown && (
 
                       <Text style={styles.modalNoCooldown}>SEM RECARGA</Text>
 
                     )}
 
-
-
-                    {/* FECHAR */}
-
-
-
                     <Pressable
 
                       style={({ pressed }) => [
 
                         styles.modalCloseButton,
-
-
 
                         pressed && styles.modalCloseButtonPressed,
 
@@ -3407,21 +1975,9 @@ export default function CompleteSheet() {
 
 }
 
-
-
-/*
-
- * ===========================================================
-
- * SECTION HEADER
-
- * ===========================================================
-
- */
-
-
-
 function SectionHeader({ title }: { title: string }) {
+  const styles = useThemedStyles(baseStyles);
+
 
   return (
 
@@ -3429,11 +1985,7 @@ function SectionHeader({ title }: { title: string }) {
 
       <Text style={styles.sectionIcon}>◆</Text>
 
-
-
       <Text style={styles.sectionTitle}>{title}</Text>
-
-
 
       <View style={styles.sectionLine} />
 
@@ -3442,20 +1994,6 @@ function SectionHeader({ title }: { title: string }) {
   );
 
 }
-
-
-
-/*
-
- * ===========================================================
-
- * STATE BOX
-
- * ===========================================================
-
- */
-
-
 
 function StateBox({
 
@@ -3470,14 +2008,14 @@ function StateBox({
   children: React.ReactNode;
 
 }) {
+  const styles = useThemedStyles(baseStyles);
+
 
   return (
 
     <View style={styles.stateBox}>
 
       <Text style={styles.stateLabel}>{label}</Text>
-
-
 
       {children}
 
@@ -3486,20 +2024,6 @@ function StateBox({
   );
 
 }
-
-
-
-/*
-
- * ===========================================================
-
- * SKILL CARD
-
- * ===========================================================
-
- */
-
-
 
 function SkillCard({
 
@@ -3514,10 +2038,10 @@ function SkillCard({
   onPress: () => void;
 
 }) {
+  const styles = useThemedStyles(baseStyles);
+
 
   const image = card.imagem ? skillCardImages[card.imagem] : null;
-
-
 
   return (
 
@@ -3537,8 +2061,6 @@ function SkillCard({
 
       )}
 
-
-
       {card.imagem && (
 
         <Text style={styles.cardName}>{formatCardName(card.imagem)}</Text>
@@ -3551,21 +2073,7 @@ function SkillCard({
 
 }
 
-
-
-/*
-
- * ===========================================================
-
- * ESTILOS
-
- * ===========================================================
-
- */
-
-
-
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
 
   container: {
 
@@ -3579,23 +2087,17 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   content: {
 
     flex: 1,
 
   },
 
-
-
   contentContainer: {
 
     paddingBottom: 110,
 
   },
-
-
 
   loading: {
 
@@ -3609,8 +2111,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   emptyText: {
 
     color: "#555",
@@ -3621,23 +2121,11 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * HEADER
-
-   */
-
-
-
   header: {
 
     alignItems: "center",
 
   },
-
-
 
   system: {
 
@@ -3651,8 +2139,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   title: {
 
     color: "#fff",
@@ -3664,8 +2150,6 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
 
   },
-
-
 
   line: {
 
@@ -3679,16 +2163,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * IDENTIDADE
-
-   */
-
-
-
   identity: {
 
     alignItems: "center",
@@ -3697,8 +2171,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   photo: {
 
     width: 200,
@@ -3706,8 +2178,6 @@ const styles = StyleSheet.create({
     maxHeight: 275,
 
   },
-
-
 
   nameInput: {
 
@@ -3729,8 +2199,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   race: {
 
     color: "#666",
@@ -3742,16 +2210,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
 
   },
-
-
-
-  /*
-
-   * SEÇÕES
-
-   */
-
-
 
   section: {
 
@@ -3767,8 +2225,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   sectionHeader: {
 
     flexDirection: "row",
@@ -3776,8 +2232,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
 
   },
-
-
 
   sectionIcon: {
 
@@ -3788,8 +2242,6 @@ const styles = StyleSheet.create({
     marginRight: 10,
 
   },
-
-
 
   sectionTitle: {
 
@@ -3803,8 +2255,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   sectionLine: {
 
     flex: 1,
@@ -3817,16 +2267,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * FICHA BÁSICA
-
-   */
-
-
-
   stateGrid: {
 
     flexDirection: "row",
@@ -3836,8 +2276,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
 
   },
-
-
 
   stateBox: {
 
@@ -3859,8 +2297,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   stateLabel: {
 
     color: "#aaa",
@@ -3873,8 +2309,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   valueRow: {
 
     flexDirection: "row",
@@ -3884,8 +2318,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
 
   },
-
-
 
   valueInput: {
 
@@ -3901,8 +2333,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   slash: {
 
     color: "#777",
@@ -3912,8 +2342,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
 
   },
-
-
 
   fixedValue: {
 
@@ -3927,8 +2355,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   singleValueInput: {
 
     color: "#fff",
@@ -3941,23 +2367,11 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * ATRIBUTOS
-
-   */
-
-
-
   attributesHeader: {
 
     marginTop: 22,
 
   },
-
-
 
   attributesGrid: {
 
@@ -3969,8 +2383,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   attribute: {
 
     alignItems: "center",
@@ -3978,8 +2390,6 @@ const styles = StyleSheet.create({
     width: "15%",
 
   },
-
-
 
   attributeLabel: {
 
@@ -3992,8 +2402,6 @@ const styles = StyleSheet.create({
     marginBottom: 7,
 
   },
-
-
 
   attributeInput: {
 
@@ -4009,23 +2417,11 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * RECURSOS
-
-   */
-
-
-
   resourcesContainer: {
 
     marginTop: 12,
 
   },
-
-
 
   resourceRow: {
 
@@ -4043,8 +2439,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   resourceName: {
 
     flex: 1,
@@ -4057,8 +2451,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   resourceValueRow: {
 
     flexDirection: "row",
@@ -4066,8 +2458,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
 
   },
-
-
 
   resourceInput: {
 
@@ -4083,8 +2473,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   resourceSlash: {
 
     color: "#555",
@@ -4094,8 +2482,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
 
   },
-
-
 
   resourceMax: {
 
@@ -4109,16 +2495,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * TEXTOS
-
-   */
-
-
-
   textField: {
 
     color: "#fff",
@@ -4130,8 +2506,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
 
   },
-
-
 
   largeTextField: {
 
@@ -4151,16 +2525,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * LISTAS
-
-   */
-
-
-
   listItem: {
 
     flexDirection: "row",
@@ -4170,8 +2534,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
 
   },
-
-
 
   listDot: {
 
@@ -4187,8 +2549,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   listText: {
 
     flex: 1,
@@ -4201,16 +2561,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
-  /*
-
-   * SKILL CARDS
-
-   */
-
-
-
   cardsContainer: {
 
     paddingTop: 15,
@@ -4220,8 +2570,6 @@ const styles = StyleSheet.create({
     paddingRight: 10,
 
   },
-
-
 
   skillCard: {
 
@@ -4235,8 +2583,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   cardImage: {
 
     width: 200,
@@ -4246,8 +2592,6 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
 
   },
-
-
 
   cardName: {
 
@@ -4265,8 +2609,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   cardPlaceholder: {
 
     width: 200,
@@ -4283,8 +2625,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   cardPlaceholderText: {
 
     color: "#444",
@@ -4294,16 +2634,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
 
   },
-
-
-
-  /*
-
-   * MODAL
-
-   */
-
-
 
   modalOverlay: {
 
@@ -4318,8 +2648,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
 
   },
-
-
 
   skillCardModal: {
 
@@ -4339,11 +2667,7 @@ const styles = StyleSheet.create({
 
     paddingBottom: 16,
 
-
-
     shadowColor: "#000000",
-
-
 
     shadowOffset: {
 
@@ -4353,8 +2677,6 @@ const styles = StyleSheet.create({
 
     },
 
-
-
     shadowOpacity: 0.6,
 
     shadowRadius: 20,
@@ -4363,8 +2685,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   modalHeader: {
 
     flexDirection: "row",
@@ -4372,8 +2692,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
 
   },
-
-
 
   modalSystem: {
 
@@ -4387,8 +2705,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   modalHeaderLine: {
 
     flex: 1,
@@ -4400,8 +2716,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
 
   },
-
-
 
   modalTitle: {
 
@@ -4419,8 +2733,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   modalSeparator: {
 
     width: "100%",
@@ -4435,23 +2747,17 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   modalScroll: {
 
     flexGrow: 0,
 
   },
 
-
-
   modalScrollContent: {
 
     paddingBottom: 4,
 
   },
-
-
 
   modalDescription: {
 
@@ -4464,16 +2770,6 @@ const styles = StyleSheet.create({
     textAlign: "left",
 
   },
-
-
-
-  /*
-
-   * BOTÃO DE ATIVAÇÃO
-
-   */
-
-
 
   activateSkillButton: {
 
@@ -4493,8 +2789,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   activateSkillButtonPressed: {
 
     backgroundColor: "#181818",
@@ -4503,8 +2797,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   activateSkillButtonDisabled: {
 
     backgroundColor: "#080808",
@@ -4512,8 +2804,6 @@ const styles = StyleSheet.create({
     borderColor: "#333333",
 
   },
-
-
 
   activateSkillButtonText: {
 
@@ -4527,23 +2817,11 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   activateSkillButtonTextDisabled: {
 
     color: "#555555",
 
   },
-
-
-
-  /*
-
-   * COOLDOWN
-
-   */
-
-
 
   modalCooldown: {
 
@@ -4552,8 +2830,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
 
   },
-
-
 
   modalCooldownLabel: {
 
@@ -4564,8 +2840,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
 
   },
-
-
 
   modalCooldownValue: {
 
@@ -4581,8 +2855,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   modalNoCooldown: {
 
     color: "#444444",
@@ -4596,16 +2868,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
 
   },
-
-
-
-  /*
-
-   * FECHAR MODAL
-
-   */
-
-
 
   modalCloseButton: {
 
@@ -4625,8 +2887,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   modalCloseButtonPressed: {
 
     backgroundColor: "#181818",
@@ -4634,8 +2894,6 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff",
 
   },
-
-
 
   modalCloseButtonText: {
 
@@ -4648,16 +2906,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
 
   },
-
-
-
-  /*
-
-   * INSPEÇÃO
-
-   */
-
-
 
   inspectionItem: {
 
@@ -4673,8 +2921,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   inspectionIcon: {
 
     width: 52,
@@ -4689,8 +2935,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   inspectionIconImage: {
 
     width: 38,
@@ -4699,8 +2943,6 @@ const styles = StyleSheet.create({
 
   },
 
-
-
   inspectionIconFallback: {
 
     color: "#777",
@@ -4708,8 +2950,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
 
   },
-
-
 
   inspectionText: {
 
@@ -4723,11 +2963,7 @@ const styles = StyleSheet.create({
 
     minHeight: 48,
 
-
-
     backgroundColor: "transparent",
-
-
 
     borderWidth: 0,
 
@@ -4739,23 +2975,13 @@ const styles = StyleSheet.create({
 
     borderRightWidth: 0,
 
-
-
     paddingHorizontal: 4,
 
     paddingVertical: 4,
 
-
-
     textAlignVertical: "center",
 
-
-
-
-
   },
-
-
 
   classValue: {
 

@@ -1,3 +1,8 @@
+import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/services/firebase/config";
+import { useThemedStyles } from "@/theme/useThemedStyles";
 
 import {
   View,
@@ -74,7 +79,7 @@ const documents: Record<string, { title: string; image: any }> = {
     image: require("./files/Arsenal da Ala Leste ARMARIO ALICE.png"),
   },
   objetivo: {
-    title: "OBJETIVO",
+    title: "Como Ativar o Elevador de Emergência",
     image: require("./files/Objetivo.png"),
   },
 
@@ -116,6 +121,10 @@ const documents: Record<string, { title: string; image: any }> = {
     title: "E-MAIL — PRESSÃO DA CÂMARA ROY / HANA",
     image: require("./files/email pressao roy hana.png"),
   },
+  emailRhJordan: {
+    title: "E-MAIL — RH E JORDAN",
+    image: require("./files/E-mail RH e Jordan.png"),
+  },
   emailRoyOliver: {
     title: "E-MAIL — LIBERAÇÃO ROY / OLIVER",
     image: require("./files/E-mail Roy e Oliver.png"),
@@ -137,6 +146,10 @@ const documents: Record<string, { title: string; image: any }> = {
     image: require("./files/KiaraRefem.png"),
   },
 
+  sessao1: {
+    title: "Mapa da Ala de Contenção",
+    image: require("./files/Sessão 1.png"),
+  },
   memorandoMilitar: {
     title: "MEMORANDO MILITAR DO GRANDE LESTE",
     image: require("./files/Memorando Militar do Grande Leste.png"),
@@ -168,9 +181,66 @@ const MIN_SCALE = 0.25;
 const MAX_SCALE = 8;
 
 export default function DocumentViewer() {
+  const styles = useThemedStyles(baseStyles);
+
   const { document } = useLocalSearchParams<{
     document?: string;
   }>();
+
+  const [accessStatus, setAccessStatus] = useState<"checking" | "granted" | "denied">("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    setAccessStatus("checking");
+
+    void (async () => {
+      try {
+        const [mode, selected] = await Promise.all([
+          AsyncStorage.getItem("userMode"),
+          AsyncStorage.getItem("selectedCharacter"),
+        ]);
+        if (cancelled) return;
+
+        if (mode === "gm") {
+          setAccessStatus("granted");
+          return;
+        }
+
+        const characterIds: Record<string, string> = {
+          ciborgue: "cyborg", cyborg: "cyborg", tengu: "tengu",
+          elfo: "elf", elf: "elf", tiefling: "tiefling",
+          draconata: "dragonborn", dragonborn: "dragonborn",
+        };
+        const characterId = characterIds[selected?.trim().toLowerCase() ?? ""];
+        if (!characterId || typeof document !== "string") {
+          setAccessStatus("denied");
+          return;
+        }
+
+        unsubscribe = onSnapshot(
+          doc(db, "characters", characterId, "documentAccess", document),
+          (snapshot) => {
+            if (!cancelled) {
+              setAccessStatus(snapshot.exists() && snapshot.data().liberado === true ? "granted" : "denied");
+            }
+          },
+          (error) => {
+            console.error("ERRO AO VERIFICAR ACESSO AO DOCUMENTO:", error);
+            if (!cancelled) setAccessStatus("denied");
+          },
+        );
+      } catch (error) {
+        console.error("ERRO AO IDENTIFICAR LEITOR DO DOCUMENTO:", error);
+        if (!cancelled) setAccessStatus("denied");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [document]);
 
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -260,6 +330,26 @@ export default function DocumentViewer() {
 
     translateY.value = 0;
     savedY.value = 0;
+  }
+
+  if (accessStatus !== "granted") {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.controlText}>‹ VOLTAR</Text>
+        </Pressable>
+        <View style={styles.error}>
+          <Text style={styles.errorTitle}>
+            {accessStatus === "checking" ? "VERIFICANDO ACESSO" : "DOCUMENTO BLOQUEADO"}
+          </Text>
+          <Text style={styles.muted}>
+            {accessStatus === "checking"
+              ? "Consultando as permissões do arquivo..."
+              : "Este documento não está liberado para o personagem."}
+          </Text>
+        </View>
+      </View>
+    );
   }
 
   if (!item || !source) {
@@ -352,7 +442,7 @@ export default function DocumentViewer() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#050505",

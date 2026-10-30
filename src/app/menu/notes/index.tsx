@@ -1,3 +1,5 @@
+import { useAppTheme } from "@/theme/AppTheme";
+import { useThemedStyles } from "@/theme/useThemedStyles";
 import React, {
   useCallback,
   useEffect,
@@ -31,6 +33,9 @@ const firebaseIds: Record<string, string> = {
 };
 
 export default function NotesScreen() {
+  const styles = useThemedStyles(baseStyles);
+  const { colors } = useAppTheme();
+
   const insets = useSafeAreaInsets();
 
   const [character, setCharacter] = useState<string | null>(null);
@@ -43,10 +48,8 @@ export default function NotesScreen() {
   );
 
   const notesRef = useRef("");
+  const hasLocalChanges = useRef(false);
 
-  /*
-   * Carrega o personagem selecionado.
-   */
   useEffect(() => {
     let mounted = true;
 
@@ -73,9 +76,6 @@ export default function NotesScreen() {
     };
   }, []);
 
-  /*
-   * Escuta as notas do personagem em tempo real.
-   */
   useEffect(() => {
     if (!character) return;
 
@@ -101,11 +101,9 @@ export default function NotesScreen() {
             ? data.notas
             : "";
 
-        /*
-         * Só atualiza a tela se o conteúdo recebido
-         * realmente for diferente do que já temos.
-         */
-        if (firebaseNotes !== notesRef.current) {
+        if (firebaseNotes === notesRef.current) {
+          hasLocalChanges.current = false;
+        } else if (!hasLocalChanges.current) {
           notesRef.current = firebaseNotes;
           setNotes(firebaseNotes);
         }
@@ -123,9 +121,6 @@ export default function NotesScreen() {
     };
   }, [character]);
 
-  /*
-   * Salva automaticamente após 600ms sem digitação.
-   */
   const saveNotes = useCallback(
     (value: string) => {
       if (!character) return;
@@ -135,6 +130,7 @@ export default function NotesScreen() {
       if (!characterId) return;
 
       notesRef.current = value;
+      hasLocalChanges.current = true;
       setNotes(value);
       setSaving(true);
 
@@ -149,10 +145,8 @@ export default function NotesScreen() {
               notas: value,
             });
           } catch (error) {
-            console.error(
-              "Erro ao salvar notas:",
-              error
-            );
+            hasLocalChanges.current = false;
+            console.error("Erro ao salvar notas:", error);
           } finally {
             setSaving(false);
           }
@@ -163,9 +157,6 @@ export default function NotesScreen() {
     [character]
   );
 
-  /*
-   * Limpa o timeout quando sair da tela.
-   */
   useEffect(() => {
     return () => {
       if (saveTimeout.current) {
@@ -191,7 +182,7 @@ export default function NotesScreen() {
           },
         ]}
       >
-        {/* HEADER */}
+
 
         <View style={styles.header}>
           <View>
@@ -220,8 +211,6 @@ export default function NotesScreen() {
 
         <View style={styles.headerLine} />
 
-        {/* ÁREA DAS ANOTAÇÕES */}
-
         <View style={styles.notesContainer}>
           <ScrollView
             style={styles.scroll}
@@ -232,7 +221,7 @@ export default function NotesScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.paper}>
-              {/* LINHAS DO PAPEL */}
+
 
               <View
                 pointerEvents="none"
@@ -248,15 +237,13 @@ export default function NotesScreen() {
                 ))}
               </View>
 
-              {/* EDITOR */}
-
               <TextInput
                 style={styles.input}
                 multiline
                 value={notes}
                 onChangeText={saveNotes}
                 placeholder="Escreva suas anotações..."
-                placeholderTextColor="#4A4A4A"
+                placeholderTextColor={colors.placeholder}
                 textAlignVertical="top"
                 autoCorrect={false}
                 autoCapitalize="sentences"
@@ -270,7 +257,7 @@ export default function NotesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#000000",
@@ -280,10 +267,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000000",
   },
-
-  /*
-   * HEADER
-   */
 
   header: {
     minHeight: 74,
@@ -341,19 +324,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
   },
 
-  /*
-   * NOTAS
-   */
-
   notesContainer: {
     flex: 1,
 
     marginTop: 14,
     marginHorizontal: 16,
 
-    /*
-     * Espaço para o BottomNavigation.
-     */
     marginBottom: 110,
 
     borderWidth: 1,
@@ -372,10 +348,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
-  /*
-   * PAPEL
-   */
-
   paper: {
     minHeight: 320,
 
@@ -383,10 +355,6 @@ const styles = StyleSheet.create({
 
     backgroundColor: "#050505",
   },
-
-  /*
-   * LINHAS HORIZONTAIS
-   */
 
   lines: {
     position: "absolute",
@@ -406,10 +374,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#161616",
   },
-
-  /*
-   * CAMPO DE TEXTO
-   */
 
   input: {
     minHeight: 320,

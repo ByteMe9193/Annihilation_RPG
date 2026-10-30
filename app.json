@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Annihilation",
+    "name": "Aniquilação",
     "slug": "Annihilation",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "annihilation",
@@ -59,9 +59,7 @@
         "projectId": "01fa0937-829d-452b-a1ff-86ba4642cd2e"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.1",
     "updates": {
       "url": "https://u.expo.dev/01fa0937-829d-452b-a1ff-86ba4642cd2e"
     }

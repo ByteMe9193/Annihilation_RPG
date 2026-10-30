@@ -9,6 +9,8 @@ export const characterDefaults = {
     instintoAtual: 0,
     ativo: false,
 
+    dificuldade: "Fácil",
+
     forca: 0,
     agilidade: 1,
     destreza: 1,
@@ -71,6 +73,8 @@ export const characterDefaults = {
     evasao: 2,
     instintoAtual: 0,
     ativo: false,
+
+    dificuldade: "Média",
 
     forca: 2,
     agilidade: 1,
@@ -135,6 +139,8 @@ export const characterDefaults = {
     instintoAtual: 0,
     ativo: false,
 
+    dificuldade: "Média - Difícil",
+
     forca: 0,
     agilidade: 1,
     destreza: 2,
@@ -197,6 +203,7 @@ export const characterDefaults = {
     evasao: 1,
     instintoAtual: 0,
     ativo: false,
+    dificuldade: "Difícil",
 
     forca: 2,
     agilidade: 0,
@@ -260,6 +267,8 @@ export const characterDefaults = {
     evasao: 3,
     instintoAtual: 0,
     ativo: false,
+
+    dificuldade: "Média",
 
     forca: 0,
     agilidade: 2,

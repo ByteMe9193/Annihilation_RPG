@@ -1,3 +1,5 @@
+import { useAppTheme } from "@/theme/AppTheme";
+import { useThemedStyles } from "@/theme/useThemedStyles";
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -82,6 +84,9 @@ function EditIcon({ size = 18 }) {
 }
 
 export default function CharacterReveal() {
+  const styles = useThemedStyles(baseStyles);
+  const { colors } = useAppTheme();
+
   const { character } = useLocalSearchParams<{
     character?: string;
   }>();
@@ -118,20 +123,12 @@ export default function CharacterReveal() {
     PRE: "0",
   });
 
-  // ============================================================
-  // SALVAR PERSONAGEM SELECIONADO
-  // ============================================================
-
   useEffect(() => {
     AsyncStorage.setItem(
       "selectedCharacter",
       characterName,
     );
   }, [characterName]);
-
-  // ============================================================
-  // SINCRONIZAR PERSONAGEM COM FIREBASE EM TEMPO REAL
-  // ============================================================
 
   useEffect(() => {
     if (!firebaseCharacterId) {
@@ -217,10 +214,6 @@ export default function CharacterReveal() {
     return () => unsubscribe();
   }, [firebaseCharacterId, data.race]);
 
-  // ============================================================
-  // SALVAR CAMPO NO FIREBASE
-  // ============================================================
-
   const saveField = async (
     field: string,
     value: string,
@@ -263,10 +256,6 @@ export default function CharacterReveal() {
     }
   };
 
-  // ============================================================
-  // ATUALIZAR ATRIBUTO LOCALMENTE
-  // ============================================================
-
   const updateAttribute = (
     attribute: keyof typeof attributes,
     value: string,
@@ -276,10 +265,6 @@ export default function CharacterReveal() {
       [attribute]: value,
     }));
   };
-
-  // ============================================================
-  // RENDER
-  // ============================================================
 
   return (
     <KeyboardAvoidingView
@@ -298,9 +283,6 @@ export default function CharacterReveal() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* =====================================================
-            CABEÇALHO
-        ===================================================== */}
 
         <Animated.View
           entering={FadeIn.duration(800)}
@@ -316,10 +298,6 @@ export default function CharacterReveal() {
 
           <View style={styles.line} />
         </Animated.View>
-
-        {/* =====================================================
-            IDENTIDADE
-        ===================================================== */}
 
         <Animated.View
           entering={FadeInDown.delay(300).duration(800)}
@@ -340,7 +318,7 @@ export default function CharacterReveal() {
               }
               style={styles.nameInput}
               placeholder="NOME"
-              placeholderTextColor="#555"
+              placeholderTextColor={colors.placeholder}
               autoCorrect={false}
             />
 
@@ -357,17 +335,10 @@ export default function CharacterReveal() {
           </Text>
         </Animated.View>
 
-        {/* =====================================================
-            FICHA
-        ===================================================== */}
-
         <Animated.View
           entering={FadeInUp.delay(700).duration(900)}
           style={styles.sheet}
         >
-          {/* =================================================
-              ESTADO
-          ================================================= */}
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionIcon}>
@@ -382,9 +353,6 @@ export default function CharacterReveal() {
           </View>
 
           <View style={styles.stateGrid}>
-            {/* =================================================
-                VIDA
-            ================================================= */}
 
             <View
               style={[
@@ -430,10 +398,6 @@ export default function CharacterReveal() {
                 />
               </View>
             </View>
-
-            {/* =================================================
-                ARMADURA
-            ================================================= */}
 
             {estados.armadura && (
               <View
@@ -525,10 +489,6 @@ export default function CharacterReveal() {
               </View>
             )}
 
-            {/* =================================================
-                ESCUDO
-            ================================================= */}
-
             {estados.escudo && (
               <View
                 style={[
@@ -618,10 +578,6 @@ export default function CharacterReveal() {
               </View>
             )}
 
-            {/* =================================================
-                EVASÃO
-            ================================================= */}
-
             <View
               style={[
                 styles.stateBox,
@@ -650,10 +606,6 @@ export default function CharacterReveal() {
                 }
               />
             </View>
-
-            {/* =================================================
-                INSTINTO
-            ================================================= */}
 
             <View
               style={[
@@ -705,10 +657,6 @@ export default function CharacterReveal() {
               </View>
             </View>
           </View>
-
-          {/* =================================================
-              ATRIBUTOS
-          ================================================= */}
 
           <View
             style={[
@@ -786,7 +734,7 @@ export default function CharacterReveal() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#050505",

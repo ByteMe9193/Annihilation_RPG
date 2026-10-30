@@ -1,3 +1,5 @@
+import { useAppTheme } from "@/theme/AppTheme";
+import { useThemedStyles } from "@/theme/useThemedStyles";
 import React, { useEffect, useState } from "react";
 
 import {
@@ -19,7 +21,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   onSnapshot,
   setDoc,
   query,
@@ -27,6 +28,9 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/services/firebase/config";
+import { getNpcGalleryImages } from "@/constants/npcGallery";
+import NpcGalleryModal from "@/components/NpcGalleryModal";
+import NpcInfoShareModal from "@/components/NpcInfoShareModal";
 import { updateCharacter } from "@/services/firebase/characters";
 
 type SkillCardEffect = {
@@ -124,6 +128,7 @@ type NPCAccessInfo = {
 type NPCAccess = {
   descoberto?: boolean;
   informacoes?: NPCAccessInfo;
+  galeria?: Record<string, boolean>;
 };
 
 type NPC = {
@@ -187,6 +192,9 @@ const NPC_CARD_GAP = 18;
 const NPC_SNAP_INTERVAL = NPC_CARD_WIDTH + NPC_CARD_GAP;
 
 export default function CardsScreen() {
+  const styles = useThemedStyles(baseStyles);
+  const { colors } = useAppTheme();
+
   const { width } = useWindowDimensions();
 
   const [character, setCharacter] = useState<string | null>(null);
@@ -198,6 +206,12 @@ export default function CardsScreen() {
   });
 
   const [chosenCards, setChosenCards] = useState<SelectedCards>({
+    tier1: null,
+    tier2: null,
+    tier3: null,
+  });
+
+  const [equippedCardIds, setEquippedCardIds] = useState<Record<TierKey, string | null>>({
     tier1: null,
     tier2: null,
     tier3: null,
@@ -226,6 +240,8 @@ export default function CardsScreen() {
   const [npcs, setNpcs] = useState<NPC[]>([]);
   const [npcAccess, setNpcAccess] = useState<Record<string, NPCAccess>>({});
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
+  const [npcGalleryOpen, setNpcGalleryOpen] = useState(false);
+  const [npcInfoShareOpen, setNpcInfoShareOpen] = useState(false);
   const [npcClassOpen, setNpcClassOpen] = useState<Record<string, boolean>>({
     Guarda: true,
     Cientista: true,
@@ -239,9 +255,6 @@ export default function CardsScreen() {
     loadCards();
   }, []);
 
-  // Mantém os Tiers das Skill Cards sincronizados em tempo real com o GM.
-  // Quando o GM libera/bloqueia um Tier em characters/{personagem},
-  // a tela do jogador atualiza imediatamente.
   useEffect(() => {
     if (!character) return;
 
@@ -260,6 +273,17 @@ export default function CardsScreen() {
           tier1: firebaseTiers.tier1 === true,
           tier2: firebaseTiers.tier2 === true,
           tier3: firebaseTiers.tier3 === true,
+        });
+
+        setEquippedCardIds({
+          tier1: data.skillCards?.tier1 ?? null,
+          tier2: data.skillCards?.tier2 ?? null,
+          tier3: data.skillCards?.tier3 ?? null,
+        });
+        setCooldowns({
+          tier1: data.skillCardCooldowns?.tier1 ?? null,
+          tier2: data.skillCardCooldowns?.tier2 ?? null,
+          tier3: data.skillCardCooldowns?.tier3 ?? null,
         });
       },
       (err) => {
@@ -330,12 +354,82 @@ export default function CardsScreen() {
     const characterId = firebaseIds[character];
     if (!characterId) return;
 
-    getDoc(doc(db, "characters", characterId, "npcNotes", selectedNpcId))
-      .then((snapshot) => {
-        setNpcNotes(snapshot.exists() ? (snapshot.data().texto ?? "") : "");
-      })
-      .catch((err) => console.error("ERRO AO CARREGAR NOTA:", err));
+    const unsubscribe = onSnapshot(
+      doc(db, "characters", characterId, "npcNotes", selectedNpcId),
+      (snapshot) => {
+        setNpcNotes(snapshot.exists() ? String(snapshot.data().texto ?? "") : "");
+      },
+      (error) => console.error("ERRO AO SINCRONIZAR NOTAS DE NPC:", error),
+    );
+
+    return unsubscribe;
   }, [selectedNpcId, character]);
+
+  useEffect(() => {
+    const tierKeys: TierKey[] = ["tier1", "tier2", "tier3"];
+    const unsubs = tierKeys.map((tier) => {
+      const cardId = equippedCardIds[tier];
+      if (!cardId) {
+        setChosenCards((previous) => ({ ...previous, [tier]: null }));
+        return () => {};
+      }
+
+      return onSnapshot(
+        doc(db, "skillCards", cardId),
+        (snapshot) => {
+          setChosenCards((previous) => ({
+            ...previous,
+            [tier]: snapshot.exists()
+              ? { id: snapshot.id, ...(snapshot.data() as Omit<SkillCard, "id">) }
+              : null,
+          }));
+        },
+        (error) => console.error("ERRO AO SINCRONIZAR CARTA EQUIPADA:", error),
+      );
+    });
+
+    return () => unsubs.forEach((unsubscribe) => unsubscribe());
+  }, [equippedCardIds.tier1, equippedCardIds.tier2, equippedCardIds.tier3]);
+
+  useEffect(() => {
+    const characterName = character;
+    const tierKeys: TierKey[] = ["tier1", "tier2", "tier3"];
+    const unsubs = tierKeys.map((tier, index) => {
+      if (!characterName || !unlockedTiers[tier] || equippedCardIds[tier]) {
+        setCards((previous) => ({ ...previous, [tier]: [] }));
+        return () => {};
+      }
+
+      const cardsQuery = query(
+        collection(db, "skillCards"),
+        where("personagem", "==", characterName),
+        where("tier", "==", index + 1),
+      );
+      return onSnapshot(
+        cardsQuery,
+        (snapshot) => {
+          setCards((previous) => ({
+            ...previous,
+            [tier]: snapshot.docs.map((card) => ({
+              id: card.id,
+              ...(card.data() as Omit<SkillCard, "id">),
+            })),
+          }));
+        },
+        (error) => console.error("ERRO AO SINCRONIZAR CARTAS DISPONÍVEIS:", error),
+      );
+    });
+
+    return () => unsubs.forEach((unsubscribe) => unsubscribe());
+  }, [
+    character,
+    unlockedTiers.tier1,
+    unlockedTiers.tier2,
+    unlockedTiers.tier3,
+    equippedCardIds.tier1,
+    equippedCardIds.tier2,
+    equippedCardIds.tier3,
+  ]);
 
   function getNpcAccess(npc: NPC | null): NPCAccess {
     if (!npc) return {};
@@ -366,10 +460,6 @@ export default function CardsScreen() {
     }
   }
 
-  /*
-   * Mantém a interface atualizada enquanto houver
-   * alguma habilidade em recarga.
-   */
   useEffect(() => {
     const hasCooldown = Object.values(cooldowns).some(
       (value) => value !== null && value > Date.now(),
@@ -447,19 +537,6 @@ export default function CardsScreen() {
 
       const characterData = characterRef.data();
 
-      /*
-       * =====================================================
-       * TIERS LIBERADOS
-       * =====================================================
-       *
-       * Tier 1 é controlado pelo Firebase também.
-       *
-       * Não existe fallback para true.
-       *
-       * Se estiver false, não aparece absolutamente nada
-       * daquele Tier.
-       */
-
       const firebaseTiers = characterData.skillCardTiers ?? {};
 
       const loadedUnlockedTiers: UnlockedTiers = {
@@ -470,17 +547,13 @@ export default function CardsScreen() {
 
       setUnlockedTiers(loadedUnlockedTiers);
 
-      /*
-       * =====================================================
-       * CARTAS ESCOLHIDAS
-       * =====================================================
-       */
-
       const selectedCardIds = {
         tier1: characterData.skillCards?.tier1 ?? null,
         tier2: characterData.skillCards?.tier2 ?? null,
         tier3: characterData.skillCards?.tier3 ?? null,
       };
+
+      setEquippedCardIds(selectedCardIds);
 
       const loadedChosenCards: SelectedCards = {
         tier1: null,
@@ -507,12 +580,6 @@ export default function CardsScreen() {
 
       setChosenCards(loadedChosenCards);
 
-      /*
-       * =====================================================
-       * COOLDOWNS
-       * =====================================================
-       */
-
       const savedCooldowns = characterData.skillCardCooldowns ?? {};
 
       setCooldowns({
@@ -520,17 +587,6 @@ export default function CardsScreen() {
         tier2: savedCooldowns.tier2 ?? null,
         tier3: savedCooldowns.tier3 ?? null,
       });
-
-      /*
-       * =====================================================
-       * RECURSOS DE CARTAS PASSIVAS
-       * =====================================================
-       *
-       * Se uma carta já estiver escolhida e possuir um efeito
-       * de recurso, garantimos que o recurso exista no personagem.
-       * Isso também corrige personagens que escolheram a carta
-       * antes da estrutura { atual, maximo } ser implementada.
-       */
 
       const currentResources = characterData.recursos ?? {};
       const repairedResources = { ...currentResources };
@@ -572,53 +628,6 @@ export default function CardsScreen() {
         });
       }
 
-      /*
-       * =====================================================
-       * CARTAS DISPONÍVEIS
-       * =====================================================
-       */
-
-      const loadedCards: Record<TierKey, SkillCard[]> = {
-        tier1: [],
-        tier2: [],
-        tier3: [],
-      };
-
-      for (const tierNumber of [1, 2, 3]) {
-        const tierKey = `tier${tierNumber}` as TierKey;
-
-        /*
-         * Tier bloqueado = não carrega nada.
-         */
-
-        if (!loadedUnlockedTiers[tierKey]) {
-          continue;
-        }
-
-        /*
-         * Se já existe carta escolhida nesse Tier,
-         * não mostramos a seleção novamente.
-         */
-
-        if (selectedCardIds[tierKey]) {
-          continue;
-        }
-
-        const cardsQuery = query(
-          collection(db, "skillCards"),
-          where("personagem", "==", selectedCharacter),
-          where("tier", "==", tierNumber),
-        );
-
-        const snapshot = await getDocs(cardsQuery);
-
-        loadedCards[tierKey] = snapshot.docs.map((cardDoc) => ({
-          id: cardDoc.id,
-          ...(cardDoc.data() as Omit<SkillCard, "id">),
-        }));
-      }
-
-      setCards(loadedCards);
     } catch (err) {
       console.error("ERRO AO CARREGAR CARTAS:", err);
 
@@ -650,12 +659,6 @@ export default function CardsScreen() {
     try {
       setSaving(true);
 
-      /*
-       * =====================================================
-       * CARREGA O PERSONAGEM
-       * =====================================================
-       */
-
       const characterRef = await getDoc(doc(db, "characters", characterId));
 
       if (!characterRef.exists()) {
@@ -664,38 +667,9 @@ export default function CardsScreen() {
 
       const characterData = characterRef.data();
 
-      /*
-       * =====================================================
-       * ATUALIZAÇÕES
-       * =====================================================
-       */
-
       const updates: Record<string, any> = {};
 
-      /*
-       * =====================================================
-       * SALVA A CARTA ESCOLHIDA
-       * =====================================================
-       */
-
       updates[`skillCards.${tier}`] = card.id;
-
-      /*
-       * =====================================================
-       * ESTADOS
-       * =====================================================
-       *
-       * Estados de Armadura/Escudo são criados
-       * AUTOMATICAMENTE quando a carta é escolhida.
-       *
-       * Isso faz com que o Reveal e a Ficha já mostrem:
-       *
-       * ARMADURA 10/10
-       * ou
-       * ESCUDO 10/10
-       *
-       * imediatamente após a escolha.
-       */
 
       const currentStates = characterData.estados ?? {};
 
@@ -710,12 +684,6 @@ export default function CardsScreen() {
           continue;
         }
 
-        /*
-         * PELE ENDURECIDA
-         *
-         * Cria ARMADURA 10/10.
-         */
-
         if (effect.campo === "armadura") {
           if (updatedStates.armadura === undefined) {
             updatedStates.armadura = {
@@ -726,12 +694,6 @@ export default function CardsScreen() {
             statesChanged = true;
           }
         }
-
-        /*
-         * COURAÇA NECROBIÓTICA
-         *
-         * Cria ESCUDO 10/10.
-         */
 
         if (effect.campo === "escudo") {
           if (updatedStates.escudo === undefined) {
@@ -748,15 +710,6 @@ export default function CardsScreen() {
       if (statesChanged) {
         updates.estados = updatedStates;
       }
-
-      /*
-       * =====================================================
-       * RECURSOS
-       * =====================================================
-       *
-       * Continua funcionando para Rancor,
-       * Flechas de Luz, Energia etc.
-       */
 
       const currentResources = characterData.recursos ?? {};
 
@@ -789,19 +742,7 @@ export default function CardsScreen() {
         updates.recursos = updatedResources;
       }
 
-      /*
-       * =====================================================
-       * SALVA TUDO
-       * =====================================================
-       */
-
       await updateCharacter(characterId, updates);
-
-      /*
-       * =====================================================
-       * ATUALIZA A INTERFACE
-       * =====================================================
-       */
 
       setChosenCards((current) => ({
         ...current,
@@ -822,12 +763,6 @@ export default function CardsScreen() {
       setSaving(false);
     }
   }
-
-  /*
-   * =========================================================
-   * ATIVAÇÃO DA HABILIDADE
-   * =========================================================
-   */
 
   async function activateCard(card: SkillCard, tier: TierKey) {
     if (!character || saving) {
@@ -859,12 +794,6 @@ export default function CardsScreen() {
 
       const updates: Record<string, any> = {};
 
-      /*
-       * =====================================================
-       * ESTADOS ATUAIS
-       * =====================================================
-       */
-
       const currentStates = characterData.estados ?? {};
 
       const updatedStates = {
@@ -872,20 +801,6 @@ export default function CardsScreen() {
       };
 
       let statesChanged = false;
-
-      /*
-       * =====================================================
-       * PELE ENDURECIDA
-       * =====================================================
-       *
-       * Primeira ativação:
-       * ARMADURA 10/10
-       *
-       * Ativações seguintes:
-       * +2 ARMADURA
-       *
-       * Máximo: 10
-       */
 
       if (card.imagem === "hardenedSkin") {
         const currentArmor = updatedStates.armadura;
@@ -905,20 +820,6 @@ export default function CardsScreen() {
         statesChanged = true;
       }
 
-      /*
-       * =====================================================
-       * COURAÇA NECROBIÓTICA
-       * =====================================================
-       *
-       * Primeira ativação:
-       * ESCUDO 10/10
-       *
-       * Ativações seguintes:
-       * +3 ESCUDO
-       *
-       * Máximo: 10
-       */
-
       if (card.imagem === "necrobioticCuirass") {
         const currentShield = updatedStates.escudo;
 
@@ -936,15 +837,6 @@ export default function CardsScreen() {
 
         statesChanged = true;
       }
-
-      /*
-       * =====================================================
-       * OUTROS EFEITOS DE ESTADO
-       * =====================================================
-       *
-       * Mantém o sistema genérico para futuras cartas
-       * que utilizem outros estados.
-       */
 
       for (const effect of card.efeitos ?? []) {
         if (
@@ -977,12 +869,6 @@ export default function CardsScreen() {
           statesChanged = true;
         }
       }
-
-      /*
-       * =====================================================
-       * RECURSOS
-       * =====================================================
-       */
 
       const currentResources = characterData.recursos ?? {};
 
@@ -1025,12 +911,6 @@ export default function CardsScreen() {
         resourcesChanged = true;
       }
 
-      /*
-       * =====================================================
-       * ATRIBUTOS
-       * =====================================================
-       */
-
       for (const effect of card.efeitos ?? []) {
         if (effect.tipo !== "atributo") {
           continue;
@@ -1041,31 +921,13 @@ export default function CardsScreen() {
         updates[effect.campo] = currentValue + effect.valor;
       }
 
-      /*
-       * =====================================================
-       * SALVA ESTADOS
-       * =====================================================
-       */
-
       if (statesChanged) {
         updates.estados = updatedStates;
       }
 
-      /*
-       * =====================================================
-       * SALVA RECURSOS
-       * =====================================================
-       */
-
       if (resourcesChanged) {
         updates.recursos = updatedResources;
       }
-
-      /*
-       * =====================================================
-       * COOLDOWN
-       * =====================================================
-       */
 
       let cooldownEnd: number | null = null;
 
@@ -1081,12 +943,6 @@ export default function CardsScreen() {
         updates[`skillCardCooldowns.${tier}`] = null;
       }
 
-      /*
-       * =====================================================
-       * SALVA TUDO NO FIREBASE
-       * =====================================================
-       */
-
       console.log("💾 ATUALIZAÇÃO DA HABILIDADE:", {
         card: card.imagem,
         states: updates.estados,
@@ -1094,10 +950,6 @@ export default function CardsScreen() {
       });
 
       await updateCharacter(characterId, updates);
-
-      /*
-       * Atualiza cooldown localmente.
-       */
 
       setCooldowns((current) => ({
         ...current,
@@ -1113,12 +965,6 @@ export default function CardsScreen() {
       setSaving(false);
     }
   }
-
-  /*
-   * =========================================================
-   * RENDERIZA CARTAS ESCOLHIDAS
-   * =========================================================
-   */
 
   function renderChosenCards() {
     const selectedEntries = (["tier1", "tier2", "tier3"] as TierKey[])
@@ -1288,34 +1134,17 @@ export default function CardsScreen() {
     );
   }
 
-  /*
-   * =========================================================
-   * RENDERIZA SELEÇÃO
-   * =========================================================
-   */
-
   function renderTierSelection(tier: TierKey) {
-    /*
-     * Tier falso = absolutamente nada.
-     */
 
     if (!unlockedTiers[tier]) {
       return null;
     }
-
-    /*
-     * Carta já escolhida = painel de ativação.
-     */
 
     if (chosenCards[tier]) {
       return null;
     }
 
     const tierCards = cards[tier];
-
-    /*
-     * Tier liberado mas sem cartas.
-     */
 
     if (tierCards.length === 0) {
       return (
@@ -1326,10 +1155,6 @@ export default function CardsScreen() {
         </View>
       );
     }
-
-    /*
-     * Seleção de cartas.
-     */
 
     return (
       <View key={tier} style={styles.selectionSection}>
@@ -1400,27 +1225,15 @@ export default function CardsScreen() {
     );
   }
 
-  /*
-   * =========================================================
-   * LOADING
-   * =========================================================
-   */
-
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#ffffff" />
+        <ActivityIndicator size="large" color={colors.text} />
 
         <Text style={styles.loadingText}>CARREGANDO CARTAS...</Text>
       </View>
     );
   }
-
-  /*
-   * =========================================================
-   * ERROR
-   * =========================================================
-   */
 
   if (error) {
     return (
@@ -1430,13 +1243,6 @@ export default function CardsScreen() {
     );
   }
 
-  /*
-   * A descoberta individual vem EXCLUSIVAMENTE de:
-   * characters/{personagem}/npcAccess/{npc}.descoberto
-   *
-   * O campo `descoberto` de npcCards é global e não controla
-   * se este personagem pode ver o NPC.
-   */
   const discoveredNpcs = npcs.filter(
     (npc) => npcAccess[npc.id]?.descoberto === true,
   );
@@ -1474,6 +1280,11 @@ export default function CardsScreen() {
 
   const selectedNpc =
     discoveredNpcs.find((npc) => npc.id === selectedNpcId) ?? null;
+  const npcGalleryImages = selectedNpc
+    ? getNpcGalleryImages(selectedNpc.id).filter(
+        (image) => npcAccess[selectedNpc.id]?.galeria?.[image.id] === true,
+      )
+    : [];
 
   return (
     <View style={styles.container}>
@@ -1524,8 +1335,7 @@ export default function CardsScreen() {
                             [classe]: willOpen,
                           }));
 
-                          // Se o NPC selecionado pertence a esta classe e ela
-                          // está sendo fechada, fecha também as informações.
+
                           if (!willOpen && selectedNpcId) {
                             const selected = discoveredNpcs.find(
                               (npc) => npc.id === selectedNpcId,
@@ -1533,6 +1343,7 @@ export default function CardsScreen() {
 
                             if (isNpcInClass(selected ?? null, classe)) {
                               setSelectedNpcId(null);
+                                setNpcGalleryOpen(false);
                             }
                           }
                         }}
@@ -1566,11 +1377,10 @@ export default function CardsScreen() {
                                     styles.npcCard,
                                     selected && styles.npcCardSelected,
                                   ]}
-                                  onPress={() =>
-                                    setSelectedNpcId((current) =>
-                                      current === npc.id ? null : npc.id,
-                                    )
-                                  }
+                                  onPress={() => {
+                                            setNpcGalleryOpen(false);
+                                    setSelectedNpcId((current) => current === npc.id ? null : npc.id);
+                                  }}
                                 >
                                   {image ? (
                                     <Image
@@ -1602,6 +1412,29 @@ export default function CardsScreen() {
                               <Text style={styles.npcInfoClass}>{selectedNpc.classe.toUpperCase()}</Text>
                             </View>
                           </View>
+
+                          {npcGalleryImages.length > 0 && (
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={`Abrir galeria de ${getNpcInfoName(selectedNpc)}`}
+                              onPress={() => setNpcGalleryOpen(true)}
+                              style={styles.npcGalleryButton}
+                            >
+                              <Text style={styles.npcGalleryButtonText}>▧  GALERIA</Text>
+                              <Text style={styles.npcGalleryCount}>{npcGalleryImages.length} IMAGEM(NS)</Text>
+                              <Text style={styles.npcGalleryArrow}>›</Text>
+                            </Pressable>
+                          )}
+
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Compartilhar informações descobertas deste NPC"
+                            onPress={() => setNpcInfoShareOpen(true)}
+                            style={styles.npcGalleryButton}
+                          >
+                            <Text style={styles.npcGalleryButtonText}>↗  COMPARTILHAR INFORMAÇÕES</Text>
+                            <Text style={styles.npcGalleryArrow}>›</Text>
+                          </Pressable>
 
                           <View style={styles.npcInfoGrid}>
                             {selectedNpc.classe === "Guarda" && (
@@ -1656,9 +1489,9 @@ export default function CardsScreen() {
                             onBlur={saveNpcNotes}
                             multiline
                             placeholder="ADICIONE SUAS OBSERVAÇÕES..."
-                            placeholderTextColor="#555555"
+                            placeholderTextColor={colors.placeholder}
                             style={styles.npcNotes}
-                            selectionColor="#ffffff"
+                            selectionColor={colors.accent}
                           />
                         </View>
                       )}
@@ -1669,11 +1502,51 @@ export default function CardsScreen() {
             )}
           </View>
       </ScrollView>
+      <NpcInfoShareModal
+        visible={npcInfoShareOpen && selectedNpc !== null}
+        senderId={character ? firebaseIds[character] ?? null : null}
+        npcId={selectedNpc?.id ?? null}
+        npcName={selectedNpc ? getNpcInfoName(selectedNpc) : "NPC"}
+        onClose={() => setNpcInfoShareOpen(false)}
+      />
+      <NpcGalleryModal
+        visible={npcGalleryOpen && selectedNpc !== null && npcGalleryImages.length > 0}
+        npcName={selectedNpc ? getNpcInfoName(selectedNpc) : "NPC"}
+        images={npcGalleryImages}
+        onClose={() => setNpcGalleryOpen(false)}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
+  npcGalleryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: "#513535",
+    backgroundColor: "#160e0e",
+    paddingHorizontal: 13,
+    marginBottom: 13,
+  },
+  npcGalleryButtonText: {
+    flex: 1,
+    color: "#ded0d0",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+  },
+  npcGalleryCount: {
+    color: "#a88d8d",
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  npcGalleryArrow: {
+    color: "#b08b8b",
+    fontSize: 23,
+    marginLeft: 13,
+  },
   container: {
     flex: 1,
     backgroundColor: "#050505",
@@ -1895,12 +1768,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  /*
-   * =====================================================
-   * CARTA ATIVA
-   * =====================================================
-   */
-
   activeCard: {
     width: "100%",
     borderWidth: 1,
@@ -2012,12 +1879,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 12,
   },
-
-  /*
-   * =====================================================
-   * CARTA ESCOLHIDA / PLACEHOLDER
-   * =====================================================
-   */
 
   imagePlaceholder: {
     width: SKILL_CARD_WIDTH,

@@ -14,8 +14,13 @@
       "channel": "preview"
     },
     "production": {
-      "autoIncrement": true,
-      "channel": "production"
+      "distribution": "internal",
+      "developmentClient": false,
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      },
+      "environment": "production"
     }
   },
   "submit": {
