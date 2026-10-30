@@ -55,6 +55,8 @@ O aplicativo depende de uma configuração válida do **Firebase**, das permiss�
 
 O projeto é voltado principalmente à experiência em **Android**, com recursos também utilizados e testados durante o desenvolvimento na **Web**. O comportamento pode variar entre plataformas.
 
+Além disso, algumas funções, como a vibração podem estar disponível apenas para builds .apk, disponibilizadas nos arquivos do projeto.
+
 ## Acesso ao Painel do Mestre
 
 Para evitar spoilers e alterações indevidas durante a campanha, a senha de acesso ao **Painel do Mestre (Game Master)** não será disponibilizada publicamente por enquanto.
